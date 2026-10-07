@@ -97,3 +97,62 @@ What did not help: even the fully cleaned tags did not beat using no tags. The b
 - Movie quality is mixed into the gap. Two well-liked movies have a small gap even if they are not alike.
 - Tags come from users who also rated, which could leak a little into the test.
 - The test uses all ratings, so it is a measure of similarity quality and not a held-out prediction test. Part C does the held-out test.
+
+## Part B: A map of the movies (`src/clusters.py`, plot in `plots/pca_map.png`)
+
+Setup: K-Means on the genres and decade vectors, since Part A showed that is the best base. The 8 movies with no genre and no year are left out, which leaves 9,734. K-Means was run with k = 5, 10, 15 and 20, and 5 different random starts for each k to see how much luck matters. PCA squeezes the vectors down to 2 dimensions for the plot.
+
+What the data looks like:
+- The vocabulary is only 31 words (the genres plus one token per decade).
+- The 9,734 movies have only 2,216 distinct vectors, so many movies are exact copies of each other as far as the model can tell. On the map they stack into tight blobs, so the plot adds a tiny jitter to make them visible.
+- The 2D map keeps only 19.9% of the variation, so it is a rough picture and not a faithful one.
+
+| k | 5 | 10 | 15 | 20 |
+|---|---|---|---|---|
+| Silhouette (higher means cleaner clusters) | 0.200 | 0.222 | 0.220 | 0.245 |
+| Agreement between random starts (ARI, 1 is identical) | 0.83 | 0.70 | 0.69 | 0.74 |
+| Smallest cluster | 1,177 | 439 | 377 | 135 |
+| Largest cluster | 2,850 | 1,444 | 1,300 | 837 |
+| Match with first-listed genre (ARI) | 0.005 | 0.171 | 0.150 | 0.108 |
+
+What the clusters are:
+- k = 5: all five clusters are decades (2000s, 1990s, 2010s, 1960s and 70s, 1980s). Genres barely matter.
+- k = 10: genres start to appear. Crime and thriller, action and sci-fi, horror, children and animation, and documentary each get their own cluster. The rest are still decade and drama or comedy mixes.
+- k = 15 and 20: more genre clusters (mystery, fantasy, romance) and the old decades split into their own clusters (1930s, 1940s, 1950s). Silhouette keeps rising slightly, but the extra clusters are mostly decades, not new kinds of movie.
+- Clusters that have a decade among their top 3 words: 5 of 5, 7 of 10, 11 of 15 and 15 of 20.
+
+Cluster labels from tags were weak. A few made sense (`zombies`, `ghosts` for horror, `disney` and `animation` for children, `organized`, `mafia` and `drugs` for crime, `politics` and `business` for documentaries, `astaire` and `rogers` for the 1930s to 50s). Many were noise: `queue` and `netflix` (one user's habit), actor and character names such as `ferrell` and `jason`, and the word `and`.
+
+What the clusters say about ratings (k = 10): average stars range from 2.93 (horror) to 3.78 (documentary), and old movies (1960s and 70s) average about 3.6. Action and sci-fi clusters get the most ratings per movie (about 21) and documentaries the fewest (about 3). I have not tested why. A likely reason is that only well-liked old movies and documentaries get watched and rated at all, but that is a guess.
+
+Honest check: is it just genres again?
+- Mostly yes, by construction. The only inputs are genres and decade, so the clusters can only be combinations of those two things. 90% to 97% of the movies in a cluster carry that cluster's top word.
+- It is not only genres. The decade token is as strong as a genre, so the clusters at small k group by era first and genre second. The low match with first-listed genre (0.005 to 0.17) comes from that.
+- The structure is weak. Silhouette is 0.20 to 0.25, so clusters overlap a lot, and the map shows one long band where the colors mix. Random restarts agree with each other only 69% to 83%, so the exact cluster boundaries depend on luck.
+- Inertia falls steadily as k grows, so there is no clear elbow and no obviously right k. For the README map, k = 10 is the most readable choice. That is a judgment call and not a metric result.
+
+Limits: the plot is a 2D squeeze of 31 dimensions that keeps about a fifth of the variation. The clusters use no rating information. Tags were left out of the features because Part A showed they did not help.
+
+### Searching for a better k (`src/choose_k.py`, plot in `plots/choose_k.png`)
+
+Instead of the four values from the plan, every k from 2 to 30 plus 35 and 40 was scored, each with 5 random starts. Three scores: inertia (how tight the clusters are), silhouette (how cleanly separated they are) and stability (how much random starts agree).
+
+| k | Silhouette | Stability |
+|---|---|---|
+| 3 | 0.138 | 1.00 |
+| 4 | 0.175 | 1.00 |
+| 5 | 0.192 | 0.83 |
+| 9 | 0.196 | 0.59 |
+| 10 | 0.215 | 0.70 |
+| 20 | 0.251 | 0.74 |
+| 30 | 0.298 | 0.74 |
+| 40 | 0.329 | 0.72 |
+
+Findings:
+- No k is clearly best. Inertia falls smoothly with no elbow. Silhouette rises all the way to k = 40 without a peak.
+- The rising silhouette is not trustworthy here. The 9,734 movies have only 2,216 distinct vectors, so with more clusters each cluster becomes one repeated genre and decade combination, which scores well trivially. Taken to the extreme, one cluster per distinct vector would look perfect and tell us nothing.
+- Stability is perfect at k = 3 and 4 but those clusters are too coarse to be useful (silhouette 0.14 and 0.18). It dips to 0.59 at k = 9, jumps back to 0.70 at k = 10, and sits on a plateau of about 0.70 to 0.74 from k = 20 to 30.
+- The only visible structure is a small bump at k = 10 (silhouette 0.196 to 0.215 and stability 0.59 to 0.70 compared with k = 9) and the plateau from about 20. So the original guesses of 10 and 20 were reasonable, but the sweep did not find anything better.
+- From about k = 24 onward some clusters become very small (as few as 22 movies at k = 40).
+
+Decision: keep k = 10 for the README map because it is the most readable. A finer k of about 20 to 22 is a defensible alternative. Further tuning would not be worth it, since no score picks a clear winner.
