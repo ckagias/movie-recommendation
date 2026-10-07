@@ -6,19 +6,24 @@ import pandas as pd
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 TEST_FRACTION = 0.2
+VALIDATION_FRACTION = 0.125
 
 
 def load_ratings():
     return pd.read_csv(DATA / "ratings.csv")
 
 
-def split_ratings(ratings, seed):
+def split_ratings(ratings, seed, held_out_fraction=TEST_FRACTION):
     rng = np.random.default_rng(seed)
     order = rng.permutation(len(ratings))
-    n_test = int(round(TEST_FRACTION * len(ratings)))
-    test = ratings.iloc[order[:n_test]]
-    train = ratings.iloc[order[n_test:]]
-    return train.reset_index(drop=True), test.reset_index(drop=True)
+    n_held_out = int(round(held_out_fraction * len(ratings)))
+    held_out = ratings.iloc[order[:n_held_out]]
+    kept = ratings.iloc[order[n_held_out:]]
+    return kept.reset_index(drop=True), held_out.reset_index(drop=True)
+
+
+def split_validation(train, seed):
+    return split_ratings(train, seed, VALIDATION_FRACTION)
 
 
 if __name__ == "__main__":
