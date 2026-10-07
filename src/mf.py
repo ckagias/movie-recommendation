@@ -25,7 +25,7 @@ def predict(model, data):
     return np.clip(out, MIN_RATING, MAX_RATING)
 
 
-def fit(train, n_factors, learning_rate, n_epochs, seed, test=None):
+def fit(train, n_factors, learning_rate, n_epochs, seed, test=None, regularization=0.0):
     rng = np.random.default_rng(seed)
 
     user_index = index_ids(train["userId"])
@@ -56,11 +56,11 @@ def fit(train, n_factors, learning_rate, n_epochs, seed, test=None):
         for n in rng.permutation(len(ratings)):
             u, m = users[n], movies[n]
             error = ratings[n] - (mu + user_bias[u] + movie_bias[m] + P[u] @ Q[m])
-            user_bias[u] += learning_rate * error
-            movie_bias[m] += learning_rate * error
+            user_bias[u] += learning_rate * (error - regularization * user_bias[u])
+            movie_bias[m] += learning_rate * (error - regularization * movie_bias[m])
             p_old = P[u].copy()
-            P[u] += learning_rate * error * Q[m]
-            Q[m] += learning_rate * error * p_old
+            P[u] += learning_rate * (error * Q[m] - regularization * p_old)
+            Q[m] += learning_rate * (error * p_old - regularization * Q[m])
 
         train_score = rmse(predict(model, train), ratings)
         test_score = rmse(predict(model, test), test["rating"].to_numpy()) if test is not None else None
