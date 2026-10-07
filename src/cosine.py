@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-from tfidf_by_hand import tfidf
+from tfidf import tfidf
 
 
 def cosine(a, b):
