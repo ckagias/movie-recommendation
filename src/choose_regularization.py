@@ -1,3 +1,5 @@
+import argparse
+
 import numpy as np
 
 from baselines import summarise
@@ -11,9 +13,14 @@ N_SEEDS = 3
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--strengths", type=float, nargs="+", default=REGULARIZATION_OPTIONS)
+    parser.add_argument("--epochs", type=int, default=N_EPOCHS)
+    args = parser.parse_args()
+
     ratings = load_ratings()
 
-    settings = [(k, reg) for k in FACTOR_OPTIONS for reg in REGULARIZATION_OPTIONS]
+    settings = [(k, reg) for k in FACTOR_OPTIONS for reg in args.strengths]
     best_scores = {s: [] for s in settings}
     best_epochs = {s: [] for s in settings}
     last_train = {s: [] for s in settings}
@@ -25,7 +32,7 @@ if __name__ == "__main__":
 
         for k, reg in settings:
             _, history = fit(
-                fit_pile, k, LEARNING_RATE, N_EPOCHS, seed, validation, regularization=reg
+                fit_pile, k, LEARNING_RATE, args.epochs, seed, validation, regularization=reg
             )
             validation_scores = np.array([h[2] for h in history])
             best_scores[(k, reg)].append(validation_scores.min())

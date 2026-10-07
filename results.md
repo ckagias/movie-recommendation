@@ -156,3 +156,30 @@ Findings:
 - From about k = 24 onward some clusters become very small (as few as 22 movies at k = 40).
 
 Decision: keep k = 10 for the README map because it is the most readable. A finer k of about 20 to 22 is a defensible alternative. Further tuning would not be worth it, since no score picks a clear winner.
+
+## Part C: Predicting ratings (`src/split.py`, `src/baselines.py`, `src/mf.py`, `src/final_score.py`)
+
+Setup: 20% of the ratings are hidden at random as the test pile and every model learns from the other 80%. Everything is repeated on 10 different shuffles. The score is RMSE, the typical miss in stars, and lower is better. The settings of the matrix factorization were chosen on a separate validation pile (10% of all ratings, cut out of the training pile), never on the test pile. About 4% of test ratings are for movies with no training rating. The movie-based models fall back to the overall average (plus the user's bias) for those.
+
+Final test scores, average with range over 10 shuffles:
+
+| Model | RMSE, all test ratings | RMSE, movies with no training rating |
+|---|---|---|
+| 1. Overall average | 1.043 (1.032 to 1.050) | 1.150 (1.112 to 1.203) |
+| 2. Movie average | 0.977 (0.963 to 0.983) | 1.150 (1.112 to 1.203) |
+| 3. Movie average + user bias | 0.894 (0.881 to 0.899) | 1.077 (1.041 to 1.137) |
+| Matrix factorization | 0.856 (0.843 to 0.862) | 1.026 (0.994 to 1.073) |
+
+Matrix factorization beats the best baseline on every one of the 10 shuffles, by 0.038 on average (0.037 to 0.040). That is 4% less error than baseline 3 and 18% less than guessing the average.
+
+How the settings were chosen (all on the validation pile):
+- Without regularization the model overfits quickly. With 10 hidden numbers the training RMSE fell from 0.78 to 0.57 while the score on unseen ratings got worse after about 10 epochs (0.872 up to 0.933).
+- Without regularization the number of hidden numbers barely mattered. 5, 10 and 20 tied at about 0.884 and 50 was a little worse (0.890), because bigger lists overfit sooner.
+- Regularization removed the overfitting. A strength of 0.1 was the sweet spot. Stronger penalties underfit, and at 0.3 all list sizes landed on 0.882. With regularization bigger lists stopped hurting, and 20 and 50 tied at 0.866 and 0.865.
+- Final settings: 20 hidden numbers, strength 0.1, 55 epochs. 50 would have been as good, but 20 is simpler and cheaper.
+
+What this does and does not show:
+- The 10 out of 10 wins are less independent than they sound. Each shuffle hides a different random 20%, so the test piles overlap a lot, and the gain looking so steady (0.037 to 0.040) is partly because of that. The ranges show the effect of the shuffle, not of fresh data.
+- The learning rate (0.01), the starting size of the hidden numbers and the 55 epochs were fixed by hand or by a coarse grid. A finer search might gain a little more.
+- Matrix factorization is still bad on movies it has never seen (RMSE 1.03). It only knows the user's bias there. Part F looks at cold start properly, and the hybrid with content features is a stretch item.
+- Only the rating miss is measured here. How good the top 10 lists are is a different question (hit rate in Part E).
