@@ -76,10 +76,15 @@ def evaluate(configs):
     eligible = np.flatnonzero(popularity >= MIN_RATINGS_QUERY)
     most_popular = np.argsort(-popularity)
     results = {name: {"val": [], "test": [], "usable": []} for name in configs}
-    baselines = {"random": {"val": [], "test": []}, "most rated": {"val": [], "test": []}}
+    baselines = {
+        "random": {"val": [], "test": []},
+        "most rated": {"val": [], "test": []},
+        "random popular": {"val": [], "test": []},
+    }
 
     for seed in range(N_SEEDS):
         rng = np.random.default_rng(seed)
+        popular_rng = np.random.default_rng([seed, 1])
         picked = rng.choice(eligible, size=2 * N_QUERY, replace=False)
         splits = {"val": picked[:N_QUERY], "test": picked[N_QUERY:]}
 
@@ -97,6 +102,12 @@ def evaluate(configs):
                 lambda i: [j for j in most_popular[: TOP_N + 1] if j != i][:TOP_N], queries
             )
             baselines["most rated"][part].append(gap)
+
+            gap, _ = score_queries(
+                lambda i: popular_rng.choice(eligible[eligible != i], size=TOP_N, replace=False),
+                queries,
+            )
+            baselines["random popular"][part].append(gap)
 
     return results, baselines
 

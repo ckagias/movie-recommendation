@@ -213,3 +213,67 @@ What this does and does not show:
 - The chart makes the Step 2 finding visible. For user 3, Payback and Pleasantville are almost pure taste picks (movie pull about 0.0), and Wyatt Earp is recommended even though its movie pull is negative. The two methods share only one movie in their top 10 (Blade Runner).
 - The notebook was run top to bottom with no errors, and its outputs are saved in the file.
 - It reuses the functions in `src/` and the saved model in `data/mf_model.pkl`, so it adds no new modelling.
+
+## Part E: Evaluation
+
+### Step 2: hit rate at 10 (`src/hit_rate.py`)
+Setup: the same 10 shuffles as Part C, so each shuffle hides the same 20% of the ratings. Every method learns from the other 80% and ranks the movies a user has not rated in that 80%. A hit is a hidden rating of 4.0 or more that lands in the user's top 10. The candidates are the movies with at least 20 training ratings (about 1,058), the same pool for every method. Users with no hidden liked movie in the pool are skipped (about 585 of 610 are scored per shuffle). Matrix factorization uses the final settings from Part C (20 hidden numbers, regularization 0.1, 55 epochs), and nothing was tuned for this test.
+
+| Method | Hit rate at 10 (at least one hit) | Recall at 10 |
+|---|---|---|
+| Random | 0.113 (0.095 to 0.134) | 0.010 (0.007 to 0.014) |
+| Most rated | 0.565 (0.549 to 0.587) | 0.118 (0.110 to 0.127) |
+| Highest movie average | 0.262 (0.205 to 0.310) | 0.034 (0.022 to 0.040) |
+| Content-based (genres and decade) | 0.500 (0.465 to 0.542) | 0.091 (0.082 to 0.105) |
+| Matrix factorization | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) |
+
+What it shows:
+- Matrix factorization beats random and the highest movie average, so its ranking carries signal. It loses to the non-personal "most rated" list on all 10 shuffles (by 0.21 to 0.27), and to the content-based list.
+- The RMSE win in Part C does not carry over to top-10 lists. A model trained to shrink the rating error on rated movies is not trained to rank movies the user will go on to watch and like.
+- The content-based list is close to the most-rated list. Many unseen movies tie at a similarity of 1.00 with some liked movie, and ties are broken by number of ratings, so the content-based list is largely popular movies that share genres. That is also why it beats the learned model here.
+- "Highest movie average" ranks by one number per movie and has no personal part. Baseline 3 (average plus user bias) gives the same ranking, because a user bias shifts every movie by the same amount.
+
+Diagnosis on shuffle 0 only (a check on the cause, not a tuning step, and nothing was chosen from it). The hit rate of matrix factorization split into its parts, with the candidate pool made stricter:
+
+| Min training ratings | Pool size | Most rated | Matrix factorization | Taste part only | Movie bias only |
+|---|---|---|---|---|---|
+| 20 (used) | 1,058 | 0.583 | 0.334 | 0.175 | 0.264 |
+| 50 | 326 | 0.615 | 0.459 | 0.282 | 0.438 |
+| 100 | 80 | 0.708 | 0.629 | 0.602 | 0.565 |
+| 200 | 6 | 1.000 | 1.000 | 1.000 | 1.000 |
+
+- The matrix factorization picks are obscure. The median pick has 44 ratings at the 20-rating cutoff, so the model favours well-liked movies that few people have rated, while the hidden liked movies are mostly well known.
+- The personal part adds something. The full score (0.334) beats movie bias alone (0.264), which is the non-personal part. The taste part on its own is the weakest (0.175), so it only helps on top of the bias.
+- Raising the cutoff narrows the gap only because the pool shrinks until every user gets nearly the same list. At 200 the pool has 6 movies and every method scores 1.000, which says nothing. A stricter cutoff does not fix the model.
+- No sign of a coding error. Random lands close to its expected rate (about 10 hidden liked movies among 1,058 candidates gives roughly 0.1), and the loss to the most-rated list shows on all 10 shuffles.
+
+Limits of the test:
+- The hidden ratings are only for movies the user chose to watch, so the test rewards guessing what people watch, which favours popular movies. A liked movie the user never watched counts as a miss. The result says little about how pleasing the lists are to the user, and a high hit rate for "most rated" does not make it a good recommender.
+- 32% of the hidden liked ratings (68.4% are in the pool) are for movies with fewer than 20 training ratings and cannot be hit by any method.
+- The 20-rating cutoff, the 4.0 threshold for "liked" and the top 10 are fixed choices. The test piles overlap across shuffles, so the ranges show the effect of the shuffle, not of fresh data.
+- Part F checks the popularity side directly (how many of each method's top 10 are among the most-rated movies).
+
+### Step 3: does the content-based similarity work? (`src/final_similarity.py`)
+Rerun of the Part A test on the final content setup (genres and decade, no tags, ties broken by number of ratings). Same method as before: for 100 test movies per shuffle (at least 50 ratings each), take the top 5 matches and average the rating gap between users who rated both, over 10 shuffles. No setting was chosen in this run. The setting was fixed in Part A.
+
+| Partners | Rating gap in stars | Content-based is lower in |
+|---|---|---|
+| Content-based top 5 (genres and decade) | 0.867 (0.840 to 0.889) | |
+| Random movies | 1.003 (0.951 to 1.039) | 10 of 10 shuffles |
+| The 5 most-rated movies | 1.017 (0.971 to 1.043) | 10 of 10 shuffles |
+| Random movies with at least 50 ratings | 0.954 (0.932 to 0.978) | 10 of 10 shuffles |
+
+Average advantage over each baseline, same test movies in each shuffle: random 0.135 (0.080 to 0.170), most rated 0.150, random popular 0.087 (0.065 to 0.121). 74% of the match pairs (69% to 79%) had at least 5 shared raters and were scorable.
+
+What it shows:
+- The match lists are better than chance on every shuffle. Part A's numbers reproduce exactly (0.867, 1.003, 1.017).
+- The new control tests the limit that movie quality is mixed into the gap. Random partners from movies with 50 or more ratings already score 0.954 instead of 1.003, so about a third of the advantage over plain random (0.049 of 0.135 stars) comes from picking well-known, well-liked movies. The remaining 0.087 stars is the part that genre and decade explain.
+- The control is not a perfect match. Ties are broken by number of ratings, so the actual matches are probably more popular than a random movie with 50 ratings. The true effect of similarity could be somewhat smaller than 0.087.
+
+Limits:
+- The gap is a rating gap, not a quality score. It says users rate similar movies similarly. It does not say they would enjoy the match.
+- Only pairs with at least 5 shared raters count (74%), and these are skewed towards popular movies.
+- Only the 450 movies with 50 or more ratings are used as queries, so the result says nothing about rarely rated movies, which is where content features would matter most.
+- The test uses all ratings, not a held-out pile. It measures how well genres and decade describe similarity, and was not used to fit anything beyond the tag weight in Part A.
+- Hidden-number (matrix factorization) similarity is not scored on this test. The model learned from the same ratings that the gap is computed on, so a low gap would be close to guaranteed and prove little. A fair version needs held-out raters, and there are too few shared raters in 20% of the data to score pairs.
+- Test movies overlap across shuffles, so the ranges show the effect of the shuffle and not of fresh data.
