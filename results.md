@@ -330,3 +330,43 @@ Limits:
 - Popularity here is the number of training ratings, which grows with how many people chose to rate a movie, and not a direct measure of how famous it is.
 - It describes the lists of the hit rate test, with its pool and its definition of liked (4.0 or more), not the demo lists.
 - The lists have not been checked for repeats of the same franchise or the same genre mix. Coverage counts distinct movies only.
+
+### The biggest misses (`src/biggest_misses.py`)
+Matrix factorization on the test pile, 10 shuffles. The worst 1% of ratings (about 200 per shuffle) are misses of at least 2.55 stars (2.46 to 2.59), compared with an RMSE of 0.856 overall. The ten worst misses on shuffle 0:
+
+| User | Movie | Actual | Guess | Movie's training ratings | User's average |
+|---|---|---|---|---|---|
+| 3 | Troll 2 (1990) | 5.0 | 0.68 | 1 | 2.39 |
+| 543 | The Artist (2011) | 0.5 | 4.48 | 9 | 4.49 |
+| 175 | Stay (2005) | 0.5 | 4.46 | 2 | 4.09 |
+| 573 | Inside Man (2006) | 0.5 | 4.39 | 28 | 4.26 |
+| 51 | Austin Powers: The Spy Who Shagged Me (1999) | 0.5 | 4.36 | 97 | 3.82 |
+| 594 | Opera (1987) | 0.5 | 4.33 | 1 | 3.93 |
+| 89 | Forrest Gump (1994) | 0.5 | 4.27 | 257 | 3.50 |
+| 573 | Crouching Tiger, Hidden Dragon (2000) | 0.5 | 4.22 | 84 | 4.26 |
+| 125 | Amelie (2001) | 0.5 | 4.18 | 97 | 3.87 |
+| 527 | Schindler's List (1993) | 1.0 | 4.68 | 176 | 4.17 |
+
+Worst 1% against all test ratings, mean over 10 shuffles (lowest to highest):
+
+| | Worst 1% | All test ratings |
+|---|---|---|
+| Model guessed too high | 92.9% (90.1% to 96.0%) | 46.8% |
+| Actual rating 1.5 or lower | 91.2% (87.6% to 94.1%) | 5.9% |
+| Actual rating 4.5 or higher | 7.0% | 21.5% |
+| Gap between the actual rating and the user's own average | 2.77 stars | 0.73 stars |
+| Movie has no training rating | 9.1% (6.4% to 12.9%) | 4.1% |
+| Movie has fewer than 5 training ratings | 22.2% | 14.9% |
+| Median training ratings of the movie | 27 | 30 |
+| Median training ratings of the user | 181 (134 to 201) | 306 |
+
+What the biggest misses share:
+- They are very low ratings (0.5 or 1.0) on movies the model expected the user to like. 9 of the 10 listed and 91% of the worst 1% are ratings of 1.5 or lower, against 6% of all ratings. The user rated against their own habit by 2.8 stars on average, against 0.7 for a typical rating.
+- They are mostly not cold start. Median movie popularity is close to the overall figure (27 against 30 ratings), several are famous movies (Forrest Gump 257 training ratings, Schindler's List 176), and only 9% are movies with no training rating. Cold start does show up a little, since movies with no training rating are twice as common among the worst misses (9% against 4%). The users have a median of 181 training ratings, so they are not new users either, though they are less active than the typical user (306).
+- Together they cost a lot. The worst 1% of ratings make up 12.1% of the total squared error (11.7% to 12.5%). By simple arithmetic the RMSE without them would be about 0.81 instead of 0.856.
+- One of the ten goes the other way: user 3 gave Troll 2 a 5.0 while the model guessed 0.68. The movie has a single training rating, so its bias was fitted from one data point (the guess suggests that rating was low, but I did not check it). It is a movie with a cult reputation for being so bad it is good, which no feature in this data can express.
+- Two of the ten come from the same user (573, who averages 4.26). I did not check how concentrated the worst misses are among users.
+
+What to take from it:
+- Nothing in this data tells a real dislike from a slip (a half star meant as 4.5) or from a different use of the scale, so these misses are probably close to unavoidable for a model that sees only ratings. That is a guess from the pattern, and I did not test it.
+- A better model would help with the other 99% more than with these. Capping the guess or clipping the loss would not move the largest misses.
