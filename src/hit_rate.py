@@ -25,7 +25,7 @@ def top_n(scores, seen, popularity):
     return np.lexsort((-popularity, -scores))[:TOP_N]
 
 
-def evaluate_seed(ratings, seed):
+def evaluate_seed(ratings, seed, model=None):
     train, test = split_ratings(ratings, seed)
 
     counts = train.groupby("movieId").size()
@@ -37,7 +37,8 @@ def evaluate_seed(ratings, seed):
     movie_means = train.groupby("movieId")["rating"].mean().reindex(pool_ids).to_numpy()
     X_pool = X[[row_of[movie_id] for movie_id in pool_ids]]
 
-    model, _ = fit(train, N_FACTORS, LEARNING_RATE, N_EPOCHS, seed, regularization=REGULARIZATION)
+    if model is None:
+        model, _ = fit(train, N_FACTORS, LEARNING_RATE, N_EPOCHS, seed, regularization=REGULARIZATION)
     in_model = np.array([model["movie_index"][movie_id] for movie_id in pool_ids])
     pool_bias, pool_Q = model["movie_bias"][in_model], model["Q"][in_model]
 

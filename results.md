@@ -277,3 +277,30 @@ Limits:
 - The test uses all ratings, not a held-out pile. It measures how well genres and decade describe similarity, and was not used to fit anything beyond the tag weight in Part A.
 - Hidden-number (matrix factorization) similarity is not scored on this test. The model learned from the same ratings that the gap is computed on, so a low gap would be close to guaranteed and prove little. A fair version needs held-out raters, and there are too few shared raters in 20% of the data to score pairs.
 - Test movies overlap across shuffles, so the ranges show the effect of the shuffle and not of fresh data.
+
+### Step 5: results table (`src/results_table.py`)
+One script reruns every test and prints the final tables, with one matrix factorization fit per shuffle shared by the RMSE and hit rate scores (about 6 minutes). All numbers match the earlier runs (Part C, step 2 and step 3), which checks that nothing drifted. 10 shuffles, mean with lowest to highest in brackets.
+
+| Model | RMSE in stars (lower is better) | Hit rate at 10 (higher is better) | Recall at 10 |
+|---|---|---|---|
+| 1. Overall average | 1.043 (1.032 to 1.050) | n/a | n/a |
+| 2. Movie average | 0.977 (0.963 to 0.983) | 0.262 (0.205 to 0.310) | 0.034 (0.022 to 0.040) |
+| 3. Movie average + user bias | 0.894 (0.881 to 0.899) | same as baseline 2 | same as baseline 2 |
+| Content-based (genres and decade) | n/a | 0.500 (0.465 to 0.542) | 0.091 (0.082 to 0.105) |
+| Matrix factorization | **0.856** (0.843 to 0.862) | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) |
+| Reference: random list | n/a | 0.113 (0.095 to 0.134) | 0.010 (0.007 to 0.014) |
+| Reference: most rated movies | n/a | **0.565** (0.549 to 0.587) | **0.118** (0.110 to 0.127) |
+
+| Similarity test: partners for 100 test movies | Rating gap in stars (lower is better) | Content-based is lower in |
+|---|---|---|
+| Content-based top 5 (genres and decade) | 0.867 (0.840 to 0.889) | |
+| Random movies | 1.003 (0.951 to 1.039) | 10 of 10 shuffles |
+| The 5 most-rated movies | 1.017 (0.971 to 1.043) | 10 of 10 shuffles |
+| Random movies with at least 50 ratings | 0.954 (0.932 to 0.978) | 10 of 10 shuffles |
+
+Reading the tables:
+- Matrix factorization is best at predicting ratings and beats baseline 3 on 10 of 10 shuffles. It is not best at the top 10 lists. The non-personal most-rated list beats it on 10 of 10 shuffles, and the content-based list beats it as well. The two jobs give different winners.
+- Baseline 3 has no separate hit rate. A user bias adds the same amount to every movie for that user, so it cannot change the order, and its list is the same as baseline 2.
+- The content-based method cannot be scored by RMSE because it ranks movies and predicts no ratings. Its only scores are the hit rate and the similarity test.
+- The hit rate numbers use the pool of movies with at least 20 training ratings and the limits listed in step 2.
+- Baseline 1 gives every movie the same score, so it has no ranking.
