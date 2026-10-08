@@ -27,6 +27,8 @@ What it shows:
 - 98% of the user-movie table is empty. Predicting those cells is the whole task.
 - Tags are thin: only 58 users ever tagged, and one of them (user 474) gave 41% of the 3,683 tag rows.
 
+![How often each star value is given](docs/img/star_counts.png)
+
 Consequences for later parts: a popularity baseline will look strong, new or rarely rated movies will be hard to predict, and content features will rely mostly on genres and decade.
 
 ## Part A: Content-based similarity
@@ -98,7 +100,7 @@ What did not help: even the fully cleaned tags did not beat using no tags. The b
 - Tags come from users who also rated, which could leak a little into the test.
 - The test uses all ratings, so it is a measure of similarity quality and not a held-out prediction test. Part C does the held-out test.
 
-## Part B: A map of the movies (`src/clusters.py`, plot in `plots/pca_map.png`)
+## Part B: A map of the movies (`src/clusters.py`, chart in `docs/img/cluster_map.png`)
 
 Setup: K-Means on the genres and decade vectors, since Part A showed that is the best base. The 8 movies with no genre and no year are left out, which leaves 9,734. K-Means was run with k = 5, 10, 15 and 20, and 5 different random starts for each k to see how much luck matters. PCA squeezes the vectors down to 2 dimensions for the plot.
 
@@ -131,9 +133,11 @@ Honest check: is it just genres again?
 - The structure is weak. Silhouette is 0.20 to 0.25, so clusters overlap a lot, and the map shows one long band where the colors mix. Random restarts agree with each other only 69% to 83%, so the exact cluster boundaries depend on luck.
 - Inertia falls steadily as k grows, so there is no clear elbow and no obviously right k. For the README map, k = 10 is the most readable choice. That is a judgment call and not a metric result.
 
+![K-Means clusters on the 2D map, one cluster highlighted per panel](docs/img/cluster_map.png)
+
 Limits: the plot is a 2D squeeze of 31 dimensions that keeps about a fifth of the variation. The clusters use no rating information. Tags were left out of the features because Part A showed they did not help.
 
-### Searching for a better k (`src/choose_k.py`, plot in `plots/choose_k.png`)
+### Searching for a better k (`src/choose_k.py`)
 
 Instead of the four values from the plan, every k from 2 to 30 plus 35 and 40 was scored, each with 5 random starts. Three scores: inertia (how tight the clusters are), silhouette (how cleanly separated they are) and stability (how much random starts agree).
 
@@ -172,6 +176,8 @@ Final test scores, average with range over 10 shuffles:
 
 Matrix factorization beats the best baseline on every one of the 10 shuffles, by 0.038 on average (0.037 to 0.040). That is 4% less error than baseline 3 and 18% less than guessing the average.
 
+![RMSE of the three baselines and matrix factorization](docs/img/baseline_ladder.png)
+
 How the settings were chosen (all on the validation pile):
 - Without regularization the model overfits quickly. With 10 hidden numbers the training RMSE fell from 0.78 to 0.57 while the score on unseen ratings got worse after about 10 epochs (0.872 up to 0.933).
 - Without regularization the number of hidden numbers barely mattered. 5, 10 and 20 tied at about 0.884 and 50 was a little worse (0.890), because bigger lists overfit sooner.
@@ -201,6 +207,8 @@ What this does and does not show:
 - Predictions above 5 are cut to 5.00 for display (user 1's top four all show 5.00), but ranking uses the uncut score.
 - This is an explanation of the model, not a test. The model has seen every rating, so these numbers say nothing about accuracy.
 
+![Movie pull and taste match for each of user 3's top 10 matrix factorization picks](docs/img/pull_versus_taste.png)
+
 ### Step 3: command line demo (`src/demo.py`)
 - Run from `src/`: `python demo.py USER [-n 10] [--refit]`. It prints a short profile of the user (number of ratings, average, the movies they rated highest), then the top N from the content-based method and the top N from matrix factorization, each with its reason.
 - The fitted matrix factorization model is saved to `data/mf_model.pkl` (gitignored). The first run takes about 43 seconds to fit, later runs about 1.4 seconds. `--refit` trains it again.
@@ -226,6 +234,8 @@ Setup: the same 10 shuffles as Part C, so each shuffle hides the same 20% of the
 | Highest movie average | 0.262 (0.205 to 0.310) | 0.034 (0.022 to 0.040) |
 | Content-based (genres and decade) | 0.500 (0.465 to 0.542) | 0.091 (0.082 to 0.105) |
 | Matrix factorization | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) |
+
+![Hit rate at 10 for each method](docs/img/hit_rate.png)
 
 What it shows:
 - Matrix factorization beats random and the highest movie average, so its ranking carries signal. It loses to the non-personal "most rated" list on all 10 shuffles (by 0.21 to 0.27), and to the content-based list.
@@ -264,6 +274,8 @@ Rerun of the Part A test on the final content setup (genres and decade, no tags,
 | Random movies with at least 50 ratings | 0.954 (0.932 to 0.978) | 10 of 10 shuffles |
 
 Average advantage over each baseline, same test movies in each shuffle: random 0.135 (0.080 to 0.170), most rated 0.150, random popular 0.087 (0.065 to 0.121). 74% of the match pairs (69% to 79%) had at least 5 shared raters and were scorable.
+
+![Rating gap between a movie and its top 5 matches](docs/img/similarity_gap.png)
 
 What it shows:
 - The match lists are better than chance on every shuffle. Part A's numbers reproduce exactly (0.867, 1.003, 1.017).
@@ -318,6 +330,8 @@ The top 10 lists from the hit rate test (same 10 shuffles, same pool of movies w
 | Content-based | 103 (101 to 105) | 64.7% (61.2% to 67.5%) | 36.3% (33.9% to 39.6%) |
 | Matrix factorization | 41 (37 to 44) | 23.3% (20.3% to 25.8%) | 30.8% (28.7% to 32.2%) |
 | Hidden liked movies (the target) | 62 (60 to 63) | 31.0% (29.7% to 32.0%) | n/a |
+
+![Share of each list's top 10 picks among the 100 most-rated movies](docs/img/popularity.png)
 
 What it shows:
 - Matrix factorization does not favor popular movies. It leans the other way: its picks are less known than the movies users actually liked (median 41 against 62 ratings, 23% against 31% in the 100 most rated). The earlier diagnosis showed that the movie bias carries much of its score, and movies with few, high ratings get large biases (for example A Streetcar Named Desire, 20 ratings, bias +0.82 in the demo).
@@ -398,6 +412,8 @@ New users. Each shuffle, 100 random users keep only k of their training ratings 
 | 20 | 0.986 | 0.922 (0.875 to 0.996) | 0.893 (0.850 to 0.963) |
 | All (full history) | 0.979 (0.911 to 1.059) | 0.899 (0.841 to 0.973) | 0.862 (0.813 to 0.932) |
 
+![RMSE for new movies and new users](docs/img/cold_start.png)
+
 What it shows:
 - New movies cost accuracy, and it fades by about 10 ratings. Matrix factorization is at 1.026 for a movie with no ratings and 0.958 with one, against 0.856 on average. From 10 ratings on it is close to its overall level (0.84 to 0.82). Movies with 0 or 1 training rating are 7.3% of the test ratings.
 - A single rating is worse than none for the simple baselines. Baseline 2 goes from 1.150 (no ratings) to 1.294 (one rating), because one rating, possibly an extreme one, is taken as the whole truth for the movie. Matrix factorization goes the other way (1.026 to 0.958), since regularization pulls a movie's bias back towards zero when it rests on little data.
@@ -442,6 +458,8 @@ Final score with the setting chosen on validation in each shuffle (blend weight 
 | Hybrid | 0.573 (0.548 to 0.593) | 0.124 (0.114 to 0.131) |
 | Most rated | 0.565 (0.549 to 0.587) | 0.118 (0.110 to 0.127) |
 | Matrix factorization | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) |
+
+![Hit rate against the popularity weight of the blend](docs/img/hybrid_blend.png)
 
 What it shows:
 - The hybrid recovers all of the loss of matrix factorization (0.319 to 0.573, better on 10 of 10 shuffles).
