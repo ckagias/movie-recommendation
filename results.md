@@ -426,7 +426,7 @@ Limits:
 - The cold-user runs train on about 19% fewer ratings, because the 100 users hold about 15,000 of the 80,669 training ratings. So the gap to the full-history row mixes "fewer ratings for the user" with "less training data overall", and the two are not separated.
 - The 100 users change with the shuffle, and their test ratings number about 3,300, so the ranges are wide (for example 0.897 to 1.053 at 0 ratings kept).
 - Test movies and users overlap across shuffles, as in the other parts.
-- The hybrid with content features (genres) for new movies was not tried. It is a stretch item in the plan.
+- The hybrid with content features (genres and decade) for new movies is in "Extra: content prior for new movies". It did not help for movies with no ratings.
 
 ## Extra: hybrid re-rank of the top 10 (`src/hybrid.py`)
 
@@ -514,6 +514,49 @@ Limits:
 - Only the rating error was measured. The hit rate and the hybrid were not rerun on the time cuts, so it is unknown whether matrix factorization still loses the top 10 to the most-rated list when the future is the test.
 - The settings were not re-tuned for the time split, and the learning rate, as before, was fixed by hand.
 
+## Extra: content prior for new movies (`src/content_prior.py`)
+
+Combines Part A and Part C. Matrix factorization knows nothing about a movie with no ratings, so its movie bias and hidden numbers stay at 0 and the prediction is the average plus the user's bias. The content prior gives such a movie a starting point taken from similar movies. Movies in the training pile with 20 or more ratings count as reliable. Similarity is the cosine between genre and decade vectors (TF-IDF, no tags, the best features from Part A). For every movie with fewer than 20 training ratings:
+- Its prior is a weighted average of the bias (and, in the second variant, the hidden numbers) of all reliable movies, with weight `cosine ^ power`, so a higher power puts more weight on near-identical movies.
+- The movie's own values are mixed in by `n / (n + strength)`, where n is its number of training ratings. With no ratings only the prior is used, and the more ratings, the more its own values count.
+- Movies with 20 or more ratings are left as they are.
+
+`power` (2, 8, 32) and `strength` (1, 3, 10, 30) were chosen in each of the 10 shuffles on a validation pile (the usual 12.5% cut from the training pile, a model fitted on the rest), by the RMSE on the validation ratings of movies with fewer than 20 ratings. The model was then fitted on the full training pile and scored once on the test pile. Matrix factorization uses the final settings, and it is the same model in all three columns, only the movie values change.
+
+Test RMSE by how many training ratings the test movie has (10 shuffles, mean with lowest to highest):
+
+| Training ratings of the movie | Share of test ratings | Matrix factorization | Prior on bias only | Prior on bias and hidden numbers |
+|---|---|---|---|---|
+| 0 | 4.1% | 1.026 (0.994 to 1.073) | 1.034 (0.995 to 1.094) | 1.040 (1.004 to 1.104) |
+| 1 | 3.2% | 0.958 (0.934 to 1.032) | 0.970 (0.941 to 1.038) | 0.967 (0.939 to 1.034) |
+| 2 to 4 | 7.6% | 0.917 (0.884 to 0.948) | 0.914 (0.877 to 0.948) | 0.912 (0.876 to 0.949) |
+| 5 to 9 | 10.0% | 0.882 (0.865 to 0.914) | 0.879 (0.859 to 0.910) | 0.877 (0.857 to 0.910) |
+| 10 to 19 | 14.2% | 0.836 (0.803 to 0.866) | 0.835 (0.803 to 0.865) | 0.834 (0.802 to 0.864) |
+| 20 or more | 61.0% | 0.829 (0.816 to 0.836) | 0.829 | 0.829 |
+| All test ratings | 100% | 0.856 (0.843 to 0.862) | 0.856 (0.843 to 0.861) | 0.856 (0.843 to 0.862) |
+
+Shuffles (of 10) where the prior beats plain matrix factorization:
+
+| Training ratings | 0 | 1 | 2 to 4 | 5 to 9 | 10 to 19 |
+|---|---|---|---|---|---|
+| Bias only | 0 | 1 | 8 | 10 | 9 |
+| Bias and hidden numbers | 0 | 2 | 9 | 10 | 10 |
+
+What it shows:
+- For the movies it was made for, it failed. With no training rating the prior is worse than doing nothing, in 10 of 10 shuffles (1.034 and 1.040 against 1.026), and at one rating it is worse in 8 or 9 of 10.
+- From 2 to 19 ratings it helps a little and steadily, by 0.001 to 0.005 stars (for example 0.882 to 0.877 at 5 to 9 ratings), and it wins in 8 to 10 of 10 shuffles. That is small against the spread between shuffles, and these movies are 31.8% of test ratings, so the overall RMSE does not move (0.856 in all three columns).
+- Hidden numbers on top of the bias added little: 0.001 to 0.002 better than the bias alone at 2 to 19 ratings and 0.006 worse at no ratings.
+- The settings picked on validation sat at the edge of the grid. Strength 1 (the lowest) was chosen in all 20 choices, and power was 2 in 7 shuffles and 8 in 3. A lower strength was not tried, and for movies with no ratings only the power matters.
+
+Why it fails for movies with no ratings, checked on shuffle 0 (`python src/content_prior.py --diagnose 0`): its 859 test ratings of 782 such movies were on average 0.146 stars *below* average plus user bias, but the prior gave them +0.168. The movies the prior learns from, those with 20 or more ratings, are the ones people liked enough to rate (their mean bias is +0.074), while the movies nobody rated yet are lower rated. The prior carries some signal, since its correlation with the rating residual is 0.203, but it is centred on the wrong value. The RMSE of the residual around 0 is 1.025 and around its own mean 1.015, so shifting alone is worth about 0.01. This is one shuffle and a reading of the numbers, not a test across all shuffles of a fix.
+
+Limits:
+- Only genres and decade are used, and they collapse the 9,734 movies into 2,216 distinct vectors (Part A), so a new movie is matched to a large group of identical neighbours and gets the group average. A movie-specific signal such as cast or plot is not available in MovieLens.
+- Settings were tried on a small grid whose lowest strength was chosen every time, so a finer search could move the results, mainly for 1 to 19 ratings.
+- The ranges are over shuffles whose test piles overlap, as in the other parts.
+- Only the rating error was measured, not the top 10.
+- A prior that is centred correctly (for example one with an offset estimated on validation) was not tried.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
@@ -527,6 +570,7 @@ Written from the results above. Every number is from this document.
 6. **New movies and new users are hard.** Matrix factorization misses by 1.026 stars on a movie with no training rating and 0.958 with one (0.856 overall), and by 0.964 for a simulated new user (0.862 with full history). For the simple baselines one rating is worse than none, because they take a single rating as the whole truth.
 7. **The biggest misses look unpredictable.** The worst 1% of ratings are mostly 0.5 or 1.0 stars on movies the user usually rates high (91% are 1.5 or lower, against 6% of all ratings), and they make up 12.1% of the squared error. Ratings alone do not tell a real dislike from a slip or an unusual use of the scale. This is a reading of the pattern, not a tested explanation.
 8. **The explanations are partial.** The content-based reason is true but weak for heavy users: all 15 examples scored 1.00, and the liked movie it names is the highest rated among ties, not proof it caused the pick. For matrix factorization, the breakdown of the prediction (average, generosity, movie pull, taste match) is exact, but the "closest liked movies" are a similarity view of the hidden numbers and not how the score is computed. For some users, such as user 1, the taste match is near zero, so the neighbours add little.
+9. **The content prior for new movies did not help.** Giving a movie with no ratings the average bias of similar movies (genres and decade) made the RMSE worse in 10 of 10 shuffles (1.034 and 1.040 against 1.026). On shuffle 0 the prior was +0.168 while those movies' ratings were 0.146 below the average, because the movies it learns from are the well-liked ones with many ratings. From 2 to 19 ratings it gains 0.001 to 0.005 and the overall RMSE is unchanged at 0.856.
 
 ### Where the evidence is weaker than it looks
 - The 10 shuffles use random 80/20 splits of the same ratings, so their test piles overlap. The ranges show the effect of the shuffle, not of fresh data, and "wins 10 of 10" is less independent than it sounds.
@@ -538,6 +582,6 @@ Written from the results above. Every number is from this document.
 
 ### What I would try next
 1. A model trained on who rated what, ignoring the stars (an implicit-feedback ranking model such as BPR), since that is the job the hit rate test measures and the hybrid suggests the rating model adds little to it.
-2. Content features for new movies, so a movie with no ratings is not guessed from the averages alone.
+2. A content prior for new movies that is centred correctly (the first version was +0.17 stars too high for movies with no ratings), or content features that carry more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts, to see whether matrix factorization still loses the top 10 when the test is the future.
 4. A larger dataset (the 32M version) to see whether the ranking of the methods holds, and with more users who have a real history over time.
