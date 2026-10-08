@@ -412,12 +412,55 @@ Limits:
 - Test movies and users overlap across shuffles, as in the other parts.
 - The hybrid with content features (genres) for new movies was not tried. It is a stretch item in the plan.
 
+## Extra: hybrid re-rank of the top 10 (`src/hybrid.py`)
+
+Idea from the popularity analysis: the most-rated list knows what people watch and the matrix factorization knows the user's taste, so blend them. For each user, the candidates are the same pool as in the hit rate test. Each candidate gets two percentile scores among that user's candidates: how popular it is (number of training ratings) and how high the model predicts the user will rate it. Two families of settings were tried:
+- Blend: `weight x popularity + (1 - weight) x predicted rating`, weight from 0 (matrix factorization) to 1 (most rated) in steps of 0.1.
+- Filter: keep the M most popular candidates (M = 25, 50, 100, 200, 400), then rank them by predicted rating.
+
+The setting was chosen separately in each of the 10 shuffles. A validation pile was cut out of the shuffle's training pile (the same cut as in Part C), a model was fitted on what was left, and the setting with the best hit rate on the validation pile was kept. A second model fitted on the full training pile was then scored once on the test pile. Weight 0 reproduces the matrix factorization result (0.319) and weight 1 the most-rated result (0.565), which checks the scoring.
+
+Hit rate at 10 on the test pile (10 shuffles, mean with lowest to highest), for a selection of settings:
+
+| Setting | Hit rate at 10 |
+|---|---|
+| Blend, popularity weight 0 (matrix factorization) | 0.319 (0.306 to 0.339) |
+| Blend, popularity weight 0.1 | 0.477 (0.456 to 0.518) |
+| Blend, popularity weight 0.3 | 0.521 (0.501 to 0.556) |
+| Blend, popularity weight 0.5 | 0.546 (0.518 to 0.572) |
+| Blend, popularity weight 0.7 | 0.563 (0.549 to 0.584) |
+| Blend, popularity weight 0.9 | 0.575 (0.542 to 0.593) |
+| Blend, popularity weight 1 (most rated) | 0.565 (0.549 to 0.587) |
+| Top 25 popular, then predicted rating | 0.561 (0.543 to 0.577) |
+| Top 100 popular, then predicted rating | 0.500 (0.472 to 0.544) |
+| Top 400 popular, then predicted rating | 0.410 (0.366 to 0.442) |
+
+Final score with the setting chosen on validation in each shuffle (blend weight 0.9 in 6 shuffles, 0.8 in 2, 0.7 in 1, and the top 25 filter in 1):
+
+| | Hit rate at 10 | Recall at 10 |
+|---|---|---|
+| Hybrid | 0.573 (0.548 to 0.593) | 0.124 (0.114 to 0.131) |
+| Most rated | 0.565 (0.549 to 0.587) | 0.118 (0.110 to 0.127) |
+| Matrix factorization | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) |
+
+What it shows:
+- The hybrid recovers all of the loss of matrix factorization (0.319 to 0.573, better on 10 of 10 shuffles).
+- It only just beats the most-rated list: +0.008 on average, higher in 7 of 10 shuffles, with differences between -0.007 and +0.025. That is small next to the shuffle-to-shuffle spread and the test piles overlap, so I would call it a small and uncertain gain, not a clear win.
+- Nearly all of the hit rate comes from knowing which movies are popular. The best blend puts 90% of the weight on popularity, and the model's opinion works mostly as a tie-breaker among movies of similar popularity. Hit rate climbs with popularity weight up to 0.9 and drops a little at 1.0 on the validation pile too.
+- The filter family did not help. It was chosen in only 1 of 10 shuffles, and larger M gives lower scores.
+
+Limits:
+- The same limits as the hit rate test apply: it only counts movies the user rated, which rewards popularity. A hybrid that is nearly all popularity says as much about the test as about the model.
+- Validation scores are lower than test scores (for example 0.422 against 0.575 at weight 0.9) because the validation pile is smaller and its pool is built from less training data. They are used only to rank settings within a shuffle.
+- The weight grid has steps of 0.1 and the filter sizes are a coarse list, so a finer search might move the chosen setting a little.
+- Personalization may matter in ways this test cannot see. It was not tested with users.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
 
 ### What failed
-1. **Matrix factorization loses the top 10 test.** It has the lowest rating error (RMSE 0.856, best of the three baselines 0.894, wins 10 of 10 shuffles), but its top 10 lists hit a hidden liked movie for 0.319 of users. A plain list of the most-rated movies gets 0.565, and the content-based list 0.500. Matrix factorization loses to the most-rated list on all 10 shuffles. It was trained to predict ratings of movies people rated, not to find the movies they go on to watch, and its picks lean obscure (median 41 ratings against 62 for the hidden liked movies).
+1. **Matrix factorization loses the top 10 test.** It has the lowest rating error (RMSE 0.856, best of the three baselines 0.894, wins 10 of 10 shuffles), but its top 10 lists hit a hidden liked movie for 0.319 of users. A plain list of the most-rated movies gets 0.565, and the content-based list 0.500. Matrix factorization loses to the most-rated list on all 10 shuffles. It was trained to predict ratings of movies people rated, not to find the movies they go on to watch, and its picks lean obscure (median 41 ratings against 62 for the hidden liked movies). A hybrid that blends popularity with the predicted rating recovers the loss (0.573) but only just beats the most-rated list (+0.008), so almost all of the hit rate comes from popularity.
 2. **Tags did not help.** In the similarity test, genres and decade alone were best (rating gap 0.867 stars). Raw tags made it worse (0.911 at weight 1). Cleaning the tags stopped the harm but not more (0.869 against 0.867 with no tags). Only 16% of movies have a tag at all, and one user wrote 41% of the tag rows. Tags also broke some searches, such as The Matrix, whose rare tags matched Sliding Doors and Karate Kid.
 3. **The content features are thin.** MovieLens has no cast, director or plot, so the content side only sees genres and decade. The 9,734 movies with a genre or year collapse into 2,216 distinct vectors, so many movies look identical to the model. In the content-based top 10, many movies tie at similarity 1.00 and the order is decided by number of ratings, which pushes the list towards popular movies (65% of its picks are among the 100 most rated).
 4. **The clusters are mostly genre and decade, with weak structure.** Silhouette was 0.20 to 0.25 for k = 5 to 20, no k was clearly best, and the apparent rise of silhouette at larger k is an artefact of the repeated vectors. The 2D map keeps 19.9% of the variation. Cluster labels from tags were mostly noise.
@@ -435,8 +478,7 @@ Written from the results above. Every number is from this document.
 - One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
 
 ### What I would try next
-1. A hybrid re-rank for the top 10: popular movies filtered by predicted rating, with the blend chosen on a validation pile and scored once on the test pile. The popularity analysis suggests the target sits in the middle of the popularity range.
-2. A model trained on who rated what, ignoring the stars (an implicit-feedback ranking model such as BPR), since that is the job the hit rate test measures.
-3. Content features for new movies, so a movie with no ratings is not guessed from the averages alone.
-4. A time-based split (learn from older ratings, test on newer ones), which is harder and closer to real use.
-5. A larger dataset (the 32M version) to see whether the ranking of the methods holds.
+1. A model trained on who rated what, ignoring the stars (an implicit-feedback ranking model such as BPR), since that is the job the hit rate test measures and the hybrid suggests the rating model adds little to it.
+2. Content features for new movies, so a movie with no ratings is not guessed from the averages alone.
+3. A time-based split (learn from older ratings, test on newer ones), which is harder and closer to real use.
+4. A larger dataset (the 32M version) to see whether the ranking of the methods holds.
