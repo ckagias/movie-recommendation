@@ -52,6 +52,7 @@ Hit rate at 10 is the share of users who have at least one of their hidden liked
 ![Hit rate at 10 for each method](docs/img/hit_rate.png)
 
 - **Rating error.** Matrix factorization beats the best baseline on 10 of 10 shuffles, by 0.038 stars on average.
+- **Library check.** Surprise `SVD` with the same settings scores 0.856, the same as the hand-written model, so the implementation is sound (tuned, the library reaches 0.851). Its regularized bias-only model scores 0.873, better than my baseline 3 (0.894), so against that baseline the gain of matrix factorization is 0.017 and not 0.038. The library fits in about 2 seconds, against about a minute here.
 - **Top 10.** The non-personal most-rated list beats matrix factorization on 10 of 10 shuffles, and the content-based list beats it too. The model was trained to predict the stars of movies people rated, and the hidden liked movies are concentrated among the well-known ones. Its picks lean obscure (median 41 ratings against 62 for the hidden liked movies).
 - **Content prior for new movies.** Giving a movie with no ratings the average bias of similar movies (genres and decade) made the error worse in 10 of 10 shuffles (1.034 against 1.026), because the movies it learns from are the well-liked ones with many ratings. It gains 0.001 to 0.005 stars at 2 to 19 ratings, and the overall RMSE does not move.
 - **Time.** With the newest ratings hidden, every model gets worse and matrix factorization still comes first. Per-user cut: 0.891 against 0.939 for the best baseline. Global cut: 1.009 against 1.034, but 90.5% of that test is users who joined after the cutoff, so it mostly measures new users. Most users rate everything in one short sitting, so the cuts say little about taste changing over years. The hit rate was not rerun on them.
@@ -131,6 +132,7 @@ python src/results_table.py
 | `notebooks/demo.ipynb` | the same demo in a notebook, with charts |
 | `python src/make_plots.py` | redraws the charts in `docs/img/` |
 | `python src/content_prior.py` | the content prior experiment (about 4 minutes) |
+| `python src/library_compare.py` | the comparison with Surprise (about 5 minutes) |
 | `python src/time_split.py` | the time-based split experiment (about 6 minutes) |
 | `python src/hybrid.py` | the hybrid re-rank experiment (about 2 minutes) |
 
@@ -151,6 +153,7 @@ src/
   explain_content.py, explain_mf.py    reasons for recommendations
   hit_rate.py, hybrid.py               top 10 hit rate and the hybrid re-rank
   content_prior.py                     content prior for movies with few ratings (genres and decade)
+  library_compare.py                   my matrix factorization against Surprise (needs scikit-surprise)
   time_split.py                        time-based splits (oldest ratings train, newest test)
   popularity.py, cold_start.py, biggest_misses.py   the Part F analyses
   results_table.py, make_plots.py      final tables and charts

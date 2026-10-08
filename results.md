@@ -557,6 +557,41 @@ Limits:
 - Only the rating error was measured, not the top 10.
 - A prior that is centred correctly (for example one with an offset estimated on validation) was not tried.
 
+## Extra: comparison with a library (`src/library_compare.py`)
+
+A check of the hand-written code against Surprise 1.1.5 (`scikit-surprise`), which implements the same model (biased matrix factorization trained by SGD, called `SVD` there) and a regularized bias-only model (`BaselineOnly`). Same 10 shuffles and test piles as Part C, so the scores are paired. Four library runs:
+- `BaselineOnly` with its defaults (regularized biases fitted by alternating least squares).
+- `SVD` with the library defaults (100 hidden numbers, strength 0.02, learning rate 0.005, 20 epochs).
+- `SVD` with my final settings (20 hidden numbers, strength 0.1, learning rate 0.01, 55 epochs).
+- `SVD` tuned in each shuffle on the validation pile, over 108 settings: hidden numbers 20, 50, 100; strength 0.02, 0.05, 0.1, 0.15; learning rate 0.005, 0.01, 0.02; epochs 20, 40, 60.
+
+RMSE on the test pile (10 shuffles, mean with lowest to highest) and fit time. The times were measured with 10 jobs running at the same time on 16 cores, so they are only good for comparing sizes:
+
+| Model | RMSE | Mine is lower in | Fit time |
+|---|---|---|---|
+| Baseline 3, movie average + user bias (mine) | 0.894 (0.881 to 0.899) | 10 of 10 | |
+| Surprise `BaselineOnly` | 0.873 (0.863 to 0.881) | 10 of 10 | 0.4 s |
+| My matrix factorization | 0.856 (0.843 to 0.862) | | 57 s |
+| Surprise `SVD`, library defaults | 0.875 (0.865 to 0.882) | 10 of 10 | 1.1 s |
+| Surprise `SVD`, my settings | 0.856 (0.846 to 0.862) | 7 of 10 | 2.0 s |
+| Surprise `SVD`, tuned on validation | 0.851 (0.840 to 0.859) | 0 of 10 | |
+
+My score minus the library score, per shuffle (negative means mine is lower): `SVD` with my settings -0.001 (-0.003 to +0.003), tuned `SVD` +0.004 (+0.002 to +0.007), `SVD` defaults -0.019, `BaselineOnly` -0.018.
+
+What it shows:
+- The hand-written matrix factorization matches the library. With the same settings the two agree to within 0.001 on average (0.856 and 0.856). Mine is lower in 7 of 10 shuffles, by up to 0.003, and higher in the other 3, by up to 0.003. This is a check of the implementation, not an improvement.
+- The library defaults are worse than my model by 0.019 mostly because of the settings. The strength 0.02 is too weak, which matches the overfitting found in Part C.
+- Tuning the library gives a small gain, 0.004 on average, better in 10 of 10 shuffles. The tuned choice was strength 0.1 in all 10 shuffles and learning rate 0.01 in 9 (0.02 in 1), the same as mine, but 60 epochs in all 10 and 100 hidden numbers in 9 (50 in 1), the top of those two ranges. My model uses 20 hidden numbers and 55 epochs. I did not try 100 hidden numbers in my own code, so I do not know whether it would close the gap.
+- My baseline 3 is not the strongest simple baseline. The library's regularized bias model scores 0.873, which is 0.021 better than my baseline 3 (0.894) and only 0.017 worse than matrix factorization (0.856). Measured against it, the gain of matrix factorization is 0.017 (2% of the error), not the 0.038 (4%) reported in Part C. Of the 0.038 that separates matrix factorization from baseline 3, 0.021 is already reached by regularized, jointly fitted biases, and the remaining 0.017 comes from the hidden numbers. Both comparisons are over the same 10 shuffles, so the ranges overlap in the same way as before.
+- The library is much faster: about 2 seconds for the same fit that takes 57 seconds in the pure Python loop here (sizes only, see the note on the times).
+
+Limits:
+- Only the rating error was compared. The library's top 10 models (such as BPR) were not scored on the hit rate yet.
+- Surprise `BaselineOnly` was used with its defaults and was not tuned. Surprise `SVD++` and the neighbour models were not run.
+- Two of the tuned settings (100 hidden numbers and 60 epochs) are at the edge of the grid, so a larger search could find a little more.
+- The test piles overlap across shuffles, as in the other parts.
+- The fit times come from 10 jobs at once and from one machine.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
@@ -573,6 +608,7 @@ Written from the results above. Every number is from this document.
 9. **The content prior for new movies did not help.** Giving a movie with no ratings the average bias of similar movies (genres and decade) made the RMSE worse in 10 of 10 shuffles (1.034 and 1.040 against 1.026). On shuffle 0 the prior was +0.168 while those movies' ratings were 0.146 below the average, because the movies it learns from are the well-liked ones with many ratings. From 2 to 19 ratings it gains 0.001 to 0.005 and the overall RMSE is unchanged at 0.856.
 
 ### Where the evidence is weaker than it looks
+- Baseline 3 (movie average + user bias) is not the strongest simple baseline. A library bias model with regularization (Surprise `BaselineOnly`) scores 0.873, so the gain of matrix factorization over a good baseline is 0.017 and not 0.038. The comparison with the library is in "Extra: comparison with a library".
 - The 10 shuffles use random 80/20 splits of the same ratings, so their test piles overlap. The ranges show the effect of the shuffle, not of fresh data, and "wins 10 of 10" is less independent than it sounds.
 - The hit rate test counts only movies the user chose to rate. A liked movie the user never watched is a miss, and the test favours popular movies. 32% of the hidden liked ratings are outside the candidate pool (fewer than 20 training ratings), so no method can hit them.
 - The cold-start users are simulated by removing ratings from existing users, and their runs train on about 19% less data.
