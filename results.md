@@ -183,3 +183,11 @@ What this does and does not show:
 - The learning rate (0.01), the starting size of the hidden numbers and the 55 epochs were fixed by hand or by a coarse grid. A finer search might gain a little more.
 - Matrix factorization is still bad on movies it has never seen (RMSE 1.03). It only knows the user's bias there. Part F looks at cold start properly, and the hybrid with content features is a stretch item.
 - Only the rating miss is measured here. How good the top 10 lists are is a different question (hit rate in Part E).
+
+## Part D: Explaining recommendations
+
+### Step 1: content-based reasons (`src/explain_content.py`)
+- A user's liked movies are those rated 4.0 or more. Every movie the user has not rated gets a score: its highest cosine similarity to any liked movie. The vectors use genres and decade only, because Part A found tags did not help.
+- The reason names the liked movie that is closest, then lists what the two share: genres, decade, and cleaned tags (tags on at least 2 movies, no `in netflix queue`). Example: "Shares genre Comedy and the 1990s decade with My Cousin Vinny (1992), which you rated 5.0."
+- Only 1,231 of 9,742 movies have a cleaned tag, so tags show up in the reason rarely (1 of 15 examples).
+- Limits seen in the demo: all 15 examples scored 1.00. A heavy user has liked a movie with exactly the same genres and decade as many unseen movies, so the score cannot rank them and the tie-break by number of ratings decides. Among several tied liked movies, the highest rated one is named, which is a choice of the code, not evidence that it influenced the pick. The reason is truthful about what matches, but it is a weak reason for a heavy user.
