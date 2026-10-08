@@ -15,13 +15,14 @@ def index_ids(ids):
 
 
 def predict(model, data):
-    u = data["userId"].map(model["user_index"]).to_numpy()
+    u = data["userId"].map(model["user_index"]).fillna(-1).astype(int).to_numpy()
     m = data["movieId"].map(model["movie_index"]).fillna(-1).astype(int).to_numpy()
-    known = m >= 0
-    out = model["mu"] + model["user_bias"][u]
-    out[known] += model["movie_bias"][m[known]] + np.sum(
-        model["P"][u[known]] * model["Q"][m[known]], axis=1
-    )
+    known_user, known_movie = u >= 0, m >= 0
+    both = known_user & known_movie
+    out = np.full(len(data), model["mu"])
+    out[known_user] += model["user_bias"][u[known_user]]
+    out[known_movie] += model["movie_bias"][m[known_movie]]
+    out[both] += np.sum(model["P"][u[both]] * model["Q"][m[both]], axis=1)
     return np.clip(out, MIN_RATING, MAX_RATING)
 
 

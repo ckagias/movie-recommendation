@@ -473,6 +473,47 @@ Limits:
 - The weight grid has steps of 0.1 and the filter sizes are a coarse list, so a finer search might move the chosen setting a little.
 - Personalization may matter in ways this test cannot see. It was not tested with users.
 
+## Extra: time-based split (`src/time_split.py`)
+
+Every earlier score hides a random 20% of the ratings. Here the hidden ratings are the newest ones, so a model learns from the past and is scored on the future. Two cuts, each a single deterministic split with no shuffling:
+- **Global cut:** the oldest 80% of all ratings train (1996-03-29 to 2016-03-22), the newest 20% test (2016-03-22 to 2018-09-24).
+- **Per-user cut:** each user's newest 20% of their own ratings are hidden, so every test user has history.
+
+The matrix factorization settings are the ones from Part C (20 hidden numbers, strength 0.1, 55 epochs), chosen on random shuffles and not re-tuned here. The baselines have no randomness, so only the matrix factorization has a range, and it covers 5 starting seeds, not different data. A user the model has never seen gets the overall average plus the movie's bias, with no user part (`mf.predict` was extended for this, and known users give the same predictions as before).
+
+RMSE on the test pile (mean with lowest to highest over 5 seeds for matrix factorization, lower is better):
+
+| Model | Random 20% (Part C) | Per-user cut | Global cut |
+|---|---|---|---|
+| 1. Overall average | 1.043 | 1.069 | 1.079 |
+| 2. Movie average | 0.977 | 1.024 | 1.046 |
+| 3. Movie average + user bias | 0.894 | 0.939 | 1.034 |
+| Matrix factorization | 0.856 | 0.891 (0.888 to 0.893) | 1.009 (1.008 to 1.009) |
+| Gain over baseline 3 | 0.038 | 0.048 | 0.025 |
+
+The two test piles in the time cuts:
+
+| | Per-user cut | Global cut |
+|---|---|---|
+| Train / test ratings | 80,672 / 20,164 | 80,669 / 20,167 |
+| Test ratings from users with no train rating | 0 | 18,247 (90.5%, from 88 users) |
+| Test ratings of movies with no train rating | 1,692 (8.4%) | 3,044 (15.1%) |
+| Average rating, train / test | 3.514 / 3.453 | 3.508 / 3.474 |
+
+On the global cut, the 1,310 test ratings (6.5%) from users and movies the model knows give 0.919 for matrix factorization against 0.954 for baseline 3.
+
+What it shows:
+- Every model gets worse than on a random split, and matrix factorization still comes first. Its RMSE goes 0.856 (random), 0.891 (per-user cut), 1.009 (global cut), and it beats the best baseline in both time cuts.
+- The gain over baseline 3 is not smaller in time, it is 0.048 on the per-user cut against 0.038 on the random split. Nothing in this test explains why, and with one split per cut I would not read much into the difference.
+- The global cut is mostly a new-user test. 90.5% of its test ratings come from 88 users who joined after the cutoff, so only the movie part of any model is used. The 1.009 against 1.034 gap is therefore matrix factorization's movie bias against the plain movie average, not personalization. The known-user subset is small (1,310 ratings from 28 users), so its 0.919 against 0.954 is noisy.
+
+Limits:
+- A user's ratings are bunched in time. The median user's ratings span about an hour, and 59% of users rated everything within one day. The per-user cut is therefore mostly "the end of the same sitting" and tests drift in taste or in what people rate late in a session far more than drift over years. Only a minority of users have a real history over time.
+- The test average rating is lower than the train average on both cuts (3.453 against 3.514 on the per-user cut). Part of the worse scores may come from that shift, which was not separated out.
+- One split per cut, so there is no range over data. The range on matrix factorization is the starting seed only.
+- Only the rating error was measured. The hit rate and the hybrid were not rerun on the time cuts, so it is unknown whether matrix factorization still loses the top 10 to the most-rated list when the future is the test.
+- The settings were not re-tuned for the time split, and the learning rate, as before, was fixed by hand.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
@@ -492,11 +533,11 @@ Written from the results above. Every number is from this document.
 - The hit rate test counts only movies the user chose to rate. A liked movie the user never watched is a miss, and the test favours popular movies. 32% of the hidden liked ratings are outside the candidate pool (fewer than 20 training ratings), so no method can hit them.
 - The cold-start users are simulated by removing ratings from existing users, and their runs train on about 19% less data.
 - The similarity test uses all ratings and not a held-out pile. Hidden-number similarity was not scored on it because the model learned from the same ratings.
-- Only `ml-latest-small` (100,836 ratings) was used, with a random split and no time-based split.
+- Only `ml-latest-small` (100,836 ratings) was used. Most scores come from random splits. The time-based split covers the rating error only (hit rate not rerun), with one split per cut, and most users rate everything in one short sitting.
 - One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
 
 ### What I would try next
 1. A model trained on who rated what, ignoring the stars (an implicit-feedback ranking model such as BPR), since that is the job the hit rate test measures and the hybrid suggests the rating model adds little to it.
 2. Content features for new movies, so a movie with no ratings is not guessed from the averages alone.
-3. A time-based split (learn from older ratings, test on newer ones), which is harder and closer to real use.
-4. A larger dataset (the 32M version) to see whether the ranking of the methods holds.
+3. The hit rate and the hybrid on the time-based cuts, to see whether matrix factorization still loses the top 10 when the test is the future.
+4. A larger dataset (the 32M version) to see whether the ranking of the methods holds, and with more users who have a real history over time.

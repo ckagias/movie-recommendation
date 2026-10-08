@@ -53,6 +53,7 @@ Hit rate at 10 is the share of users who have at least one of their hidden liked
 
 - **Rating error.** Matrix factorization beats the best baseline on 10 of 10 shuffles, by 0.038 stars on average.
 - **Top 10.** The non-personal most-rated list beats matrix factorization on 10 of 10 shuffles, and the content-based list beats it too. The model was trained to predict the stars of movies people rated, and the hidden liked movies are concentrated among the well-known ones. Its picks lean obscure (median 41 ratings against 62 for the hidden liked movies).
+- **Time.** With the newest ratings hidden, every model gets worse and matrix factorization still comes first. Per-user cut: 0.891 against 0.939 for the best baseline. Global cut: 1.009 against 1.034, but 90.5% of that test is users who joined after the cutoff, so it mostly measures new users. Most users rate everything in one short sitting, so the cuts say little about taste changing over years. The hit rate was not rerun on them.
 - **Hybrid.** Weighting the percentile of popularity and the percentile of predicted rating recovers the loss. The best blends put about 90% of the weight on popularity, and the hybrid beats the most-rated list by only 0.008 (higher in 7 of 10 shuffles), which is within the spread between shuffles.
 
 ![Hit rate against the popularity weight of the blend](docs/img/hybrid_blend.png)
@@ -99,7 +100,7 @@ The full write-up, with the numbers and limits, is at the end of [`results.md`](
 
 1. A model trained on who rated what, ignoring the stars (such as BPR), since that is the job the hit rate measures.
 2. Content features for new movies, so a movie with no ratings is not guessed from averages alone.
-3. A time-based split, learning from older ratings and testing on newer ones.
+3. The hit rate and the hybrid on the time-based cuts.
 4. The 32M version of MovieLens, to see whether the ranking of the methods holds.
 
 ## Run it
@@ -128,6 +129,7 @@ python src/results_table.py
 | `python src/demo.py 3` | top 10 with reasons from both methods for user 3 (the first run fits the model, about 45 seconds) |
 | `notebooks/demo.ipynb` | the same demo in a notebook, with charts |
 | `python src/make_plots.py` | redraws the charts in `docs/img/` |
+| `python src/time_split.py` | the time-based split experiment (about 6 minutes) |
 | `python src/hybrid.py` | the hybrid re-rank experiment (about 2 minutes) |
 
 Every script uses fixed random seeds, so a rerun gives the same numbers.
@@ -146,6 +148,7 @@ src/
   final_score.py                       matrix factorization against the baselines (RMSE)
   explain_content.py, explain_mf.py    reasons for recommendations
   hit_rate.py, hybrid.py               top 10 hit rate and the hybrid re-rank
+  time_split.py                        time-based splits (oldest ratings train, newest test)
   popularity.py, cold_start.py, biggest_misses.py   the Part F analyses
   results_table.py, make_plots.py      final tables and charts
   demo.py                              command line demo
