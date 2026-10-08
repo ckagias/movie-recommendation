@@ -1,6 +1,7 @@
 import argparse
 import pickle
 
+from explain_als import explain_als, fit_final_als, recommend_als
 from explain_content import ratings, recommend
 from explain_mf import explain_mf, fit_final_model, n_ratings, recommend_mf, title_of
 from movie_text import DATA
@@ -39,6 +40,13 @@ def print_content_based(user_id, n):
         print(f"{rank:>2}. {row.title}\n     {row.why}")
 
 
+def print_als(model, user_id, n):
+    print(f"\n=== Top {n}, ALS: learned from which movies users like together ===")
+    for rank, (movie_id, _, score) in enumerate(recommend_als(model, user_id, n), start=1):
+        print(f"{rank:>2}. {title_of[movie_id]}  (score {score:.2f}, {n_ratings[movie_id]} ratings)")
+        print("     " + indent(explain_als(model, user_id, movie_id)))
+
+
 def print_matrix_factorization(model, user_id, n):
     print(f"\n=== Top {n}, matrix factorization: learned from everyone's ratings ===")
     for rank, (movie_id, _, predicted) in enumerate(recommend_mf(model, user_id, n), start=1):
@@ -47,7 +55,7 @@ def print_matrix_factorization(model, user_id, n):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Top movies for one MovieLens user, with the reasons.")
+    parser = argparse.ArgumentParser(description="Top movies for one MovieLens user from three methods, with the reasons.")
     parser.add_argument("user", type=int, help="user id, 1 to 610")
     parser.add_argument("-n", type=int, default=10, help="how many movies to show per method")
     parser.add_argument("--refit", action="store_true", help="train the model again instead of loading the saved one")
@@ -59,4 +67,5 @@ if __name__ == "__main__":
     model = load_model(args.refit)
     print_profile(args.user)
     print_content_based(args.user, args.n)
+    print_als(fit_final_als(), args.user, args.n)
     print_matrix_factorization(model, args.user, args.n)

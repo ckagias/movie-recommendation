@@ -30,9 +30,10 @@ AQUA = "#1baf7a"
 DEEMPHASIS = "#b9b7ae"
 MAP_GRAY = "#d9d7cf"
 
-ROLE_COLORS = {"built": BLUE, "reference": DEEMPHASIS, "target": ORANGE}
+ROLE_COLORS = {"built": BLUE, "library": AQUA, "reference": DEEMPHASIS, "target": ORANGE}
 ROLE_NAMES = {
     "built": "built in this project",
+    "library": "library model (implicit)",
     "reference": "baseline or reference list",
     "target": "what users actually liked",
 }
@@ -45,6 +46,12 @@ RMSE = [
     ("Matrix factorization", 0.856, 0.843, 0.862, "built"),
 ]
 HIT_RATE = [
+    ("ALS, liked only", 0.759, 0.743, 0.788, "built"),
+    ("ALS, rated at all", 0.748, 0.720, 0.771, "built"),
+    ("Item-item cosine, liked only", 0.722, 0.667, 0.745, "library"),
+    ("Item-item cosine, rated at all", 0.692, 0.666, 0.716, "library"),
+    ("BPR, liked only", 0.679, 0.637, 0.720, "library"),
+    ("BPR, rated at all", 0.630, 0.580, 0.655, "library"),
     ("Hybrid (popularity + predicted rating)", 0.573, 0.548, 0.593, "built"),
     ("Most rated movies", 0.565, 0.549, 0.587, "reference"),
     ("Content-based (genres and decade)", 0.500, 0.465, 0.542, "built"),
@@ -346,6 +353,18 @@ def cluster_map(k=10):
     save(fig, "cluster_map.png")
 
 
+def hit_rate():
+    bar_chart(
+        "hit_rate.png",
+        "Models trained on who rated what lead the top 10 test",
+        "Share of users with at least one hidden liked movie in their top 10, higher is better.\nLine is lowest to highest of 10 shuffles.",
+        HIT_RATE,
+        (0, 0.92),
+        lambda v: f"{v:.3f}",
+        "hit rate at 10",
+    )
+
+
 if __name__ == "__main__":
     set_style()
     star_counts()
@@ -358,15 +377,7 @@ if __name__ == "__main__":
         lambda v: f"{v:.3f}",
         "RMSE in stars",
     )
-    bar_chart(
-        "hit_rate.png",
-        "Popularity beats the learned model on the top 10 test",
-        "Share of users with at least one hidden liked movie in their top 10, higher is better.\nLine is lowest to highest of 10 shuffles.",
-        HIT_RATE,
-        (0, 0.72),
-        lambda v: f"{v:.3f}",
-        "hit rate at 10",
-    )
+    hit_rate()
     blend_curve()
     dot_range_chart(
         "similarity_gap.png",

@@ -210,7 +210,7 @@ What this does and does not show:
 ![Movie pull and taste match for each of user 3's top 10 matrix factorization picks](docs/img/pull_versus_taste.png)
 
 ### Step 3: command line demo (`src/demo.py`)
-- Run from `src/`: `python demo.py USER [-n 10] [--refit]`. It prints a short profile of the user (number of ratings, average, the movies they rated highest), then the top N from the content-based method and the top N from matrix factorization, each with its reason.
+- Run from `src/`: `python demo.py USER [-n 10] [--refit]`. It prints a short profile of the user (number of ratings, average, the movies they rated highest), then the top N from the content-based method and the top N from matrix factorization, each with its reason. (ALS was added in Step 4.)
 - The fitted matrix factorization model is saved to `data/mf_model.pkl` (gitignored). The first run takes about 43 seconds to fit, later runs about 1.4 seconds. `--refit` trains it again.
 - An unknown user id gives a clear error instead of a crash.
 - Both methods use all of the user's ratings, so this is a demo of the explanations, not a test of quality. Quality is measured in Part E.
@@ -221,6 +221,16 @@ What this does and does not show:
 - The chart makes the Step 2 finding visible. For user 3, Payback and Pleasantville are almost pure taste picks (movie pull about 0.0), and Wyatt Earp is recommended even though its movie pull is negative. The two methods share only one movie in their top 10 (Blade Runner).
 - The notebook was run top to bottom with no errors, and its outputs are saved in the file.
 - It reuses the functions in `src/` and the saved model in `data/mf_model.pkl`, so it adds no new modelling.
+
+### Step 4: ALS recommendations and reasons (`src/explain_als.py`)
+Added after the hit rate results, because ALS is the best top-10 model found (see "Extra: ALS written by hand").
+- The model is the hand-written ALS of `src/als.py`, fitted on all ratings with the ratings of 4.0 or more as positives (the liked-only version) and the untuned settings of the check (32 hidden numbers, strength 0.1, confidence 10, 15 iterations). It fits in a few seconds, so it is not cached. Candidates are the movies with 20 or more ratings that the user has not rated, as in the hit rate test, with ties broken by number of ratings. One user in 610 has no rating of 4.0 or more and gets no score.
+- The reason is exact. A user's vector is a linear function of the vectors of the movies they liked, so the score of a pick is the sum of one contribution per liked movie, `c * y_pick^T A^-1 y_j`, where `A` is the matrix of the user's solve. The contributions add up to the score (0.366540 for both, first pick of user 3, printed by `python src/explain_als.py`). The user vector is solved again from the final movie vectors, so the score and its explanation use the same numbers.
+- Example, user 3 (39 ratings, 16 of them 4.0 or more): the top 3 are Lethal Weapon, The Exorcist and Alien. The biggest contributions to Lethal Weapon come from Road Warrior, Conan the Barbarian and Escape from L.A. The content-based list shares Alien with it, and the matrix factorization list shares no movie with it.
+- The score is a preference score, not a rating, and it can pass 1 (1.33 for the first pick of user 414). It cannot be compared with the predicted stars of matrix factorization.
+- Limit: for heavy users the reason is spread thin. User 414 liked 1,227 movies, and the three largest contributions to the first pick add 0.064 of a score of 1.33. For user 3 they add 0.145 of 0.37. The named movies are only a small part of the reason, and "shares no genre" appears often because the model's notion of similar is who liked the movies, not genres.
+- `python src/demo.py USER` and `notebooks/demo.ipynb` now show all three lists. The notebook has a section for ALS (the table, the reason, and a chart of the ten liked movies that contribute most to the first pick), a three-way overlap check, and a hit rate section with the redrawn chart. The notebook was run top to bottom with no errors and its outputs are saved.
+- As in Step 3, this shows the explanations for users the models were fitted on, not a test of quality.
 
 ## Part E: Evaluation
 
@@ -236,6 +246,8 @@ Setup: the same 10 shuffles as Part C, so each shuffle hides the same 20% of the
 | Matrix factorization | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) |
 
 ![Hit rate at 10 for each method](docs/img/hit_rate.png)
+
+The chart also includes the models added in the later sections (the hybrid, ALS, item-item and BPR).
 
 What it shows:
 - Matrix factorization beats random and the highest movie average, so its ranking carries signal. It loses to the non-personal "most rated" list on all 10 shuffles (by 0.21 to 0.27), and to the content-based list.

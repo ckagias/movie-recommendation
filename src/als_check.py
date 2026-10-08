@@ -10,7 +10,7 @@ import numpy as np
 from implicit.cpu.als import AlternatingLeastSquares
 from scipy.sparse import csr_matrix
 
-from als import fit, interaction_matrix, loss, solve_side
+from als import CONFIDENCE, N_FACTORS, N_ITERATIONS, REGULARIZATION, fit, interaction_matrix, loss, solve_side
 from baselines import summarise
 from explain_content import LIKED_FROM
 from hit_rate import N_SEEDS
@@ -19,10 +19,6 @@ from mf import index_ids
 from split import load_ratings, split_ratings
 
 N_WORKERS = 10
-N_FACTORS = 32
-REGULARIZATION = 0.1
-CONFIDENCE = 10.0
-N_ITERATIONS = 15
 
 VARIANTS = {"rated at all": None, "liked only": LIKED_FROM}
 MODELS = ["my ALS", "library ALS, exact solves", "library ALS, default solver"]

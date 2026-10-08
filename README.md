@@ -130,8 +130,8 @@ python src/results_table.py
 | Command | What it does |
 |---|---|
 | `python src/results_table.py` | reruns every test and prints the tables above |
-| `python src/demo.py 3` | top 10 with reasons from both methods for user 3 (the first run fits the model, about 45 seconds) |
-| `notebooks/demo.ipynb` | the same demo in a notebook, with charts |
+| `python src/demo.py 3` | top 10 with reasons from the three methods for user 3 (the first run fits the matrix factorization model, about 45 seconds) |
+| `notebooks/demo.ipynb` | the same demo in a notebook, with charts and the hit rate results |
 | `python src/make_plots.py` | redraws the charts in `docs/img/` |
 | `python src/content_prior.py` | the content prior experiment (about 4 minutes) |
 | `python src/als_check.py` | the hand-written ALS against the library (about 2 minutes) |
@@ -154,7 +154,7 @@ src/
   clusters.py, choose_k.py             K-Means, PCA map and the search for k
   choose_factors.py, choose_regularization.py   settings chosen on the validation pile
   final_score.py                       matrix factorization against the baselines (RMSE)
-  explain_content.py, explain_mf.py    reasons for recommendations
+  explain_content.py, explain_mf.py, explain_als.py   reasons for recommendations
   hit_rate.py, hybrid.py               top 10 hit rate and the hybrid re-rank
   content_prior.py                     content prior for movies with few ratings (genres and decade)
   library_hit_rate.py                  top 10 hit rate of the implicit library models (needs implicit)

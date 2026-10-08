@@ -2,6 +2,10 @@ import numpy as np
 from scipy.sparse import csr_matrix
 
 INIT_SCALE = 0.01
+N_FACTORS = 32
+REGULARIZATION = 0.1
+CONFIDENCE = 10.0
+N_ITERATIONS = 15
 
 
 def interaction_matrix(frame, user_index, movie_index, liked_from=None):
