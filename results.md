@@ -370,3 +370,44 @@ What the biggest misses share:
 What to take from it:
 - Nothing in this data tells a real dislike from a slip (a half star meant as 4.5) or from a different use of the scale, so these misses are probably close to unavoidable for a model that sees only ratings. That is a guess from the pattern, and I did not test it.
 - A better model would help with the other 99% more than with these. Capping the guess or clipping the loss would not move the largest misses.
+
+### Cold start (`src/cold_start.py`)
+Two questions: how bad is the miss for movies with few ratings, and for users with few ratings? 10 shuffles, RMSE in stars as mean (lowest to highest). Matrix factorization uses the final settings. The script runs the shuffles in parallel and takes about 8 minutes.
+
+New movies. Test ratings are grouped by how many training ratings their movie has:
+
+| Training ratings of the movie | Share of test ratings | Baseline 2, movie average | Baseline 3, movie average + user bias | Matrix factorization |
+|---|---|---|---|---|
+| 0 | 4.1% | 1.150 (1.112 to 1.203) | 1.077 (1.041 to 1.137) | 1.026 (0.994 to 1.073) |
+| 1 | 3.2% | 1.294 (1.221 to 1.360) | 1.226 (1.164 to 1.327) | 0.958 (0.934 to 1.032) |
+| 2 to 4 | 7.6% | 1.087 (1.055 to 1.119) | 1.009 (0.978 to 1.041) | 0.917 (0.884 to 0.948) |
+| 5 to 9 | 10.0% | 1.005 (0.992 to 1.028) | 0.915 (0.902 to 0.951) | 0.882 (0.865 to 0.914) |
+| 10 to 19 | 14.2% | 0.952 (0.920 to 0.974) | 0.854 (0.822 to 0.876) | 0.836 (0.803 to 0.866) |
+| 20 to 49 | 27.9% | 0.948 (0.939 to 0.961) | 0.858 (0.849 to 0.867) | 0.842 (0.829 to 0.851) |
+| 50 or more | 33.1% | 0.916 (0.901 to 0.926) | 0.841 (0.829 to 0.852) | 0.818 (0.805 to 0.831) |
+
+New users. Each shuffle, 100 random users keep only k of their training ratings (chosen at random), the models are refitted, and they are scored on those users' hidden test ratings (about 3,300 per shuffle). The last row scores the same users with their full history:
+
+| Ratings kept | Baseline 2, movie average | Baseline 3, movie average + user bias | Matrix factorization |
+|---|---|---|---|
+| 0 | 0.986 (0.917 to 1.066) | 0.986 (0.917 to 1.066) | 0.964 (0.897 to 1.053) |
+| 1 | 0.986 | 1.199 (1.092 to 1.395) | 0.967 (0.897 to 1.029) |
+| 2 | 0.986 | 1.061 (1.008 to 1.122) | 0.961 (0.916 to 1.008) |
+| 5 | 0.986 | 0.972 (0.934 to 1.046) | 0.935 (0.900 to 1.005) |
+| 10 | 0.986 | 0.936 (0.887 to 0.997) | 0.909 (0.870 to 0.973) |
+| 20 | 0.986 | 0.922 (0.875 to 0.996) | 0.893 (0.850 to 0.963) |
+| All (full history) | 0.979 (0.911 to 1.059) | 0.899 (0.841 to 0.973) | 0.862 (0.813 to 0.932) |
+
+What it shows:
+- New movies cost accuracy, and it fades by about 10 ratings. Matrix factorization is at 1.026 for a movie with no ratings and 0.958 with one, against 0.856 on average. From 10 ratings on it is close to its overall level (0.84 to 0.82). Movies with 0 or 1 training rating are 7.3% of the test ratings.
+- A single rating is worse than none for the simple baselines. Baseline 2 goes from 1.150 (no ratings) to 1.294 (one rating), because one rating, possibly an extreme one, is taken as the whole truth for the movie. Matrix factorization goes the other way (1.026 to 0.958), since regularization pulls a movie's bias back towards zero when it rests on little data.
+- The same happens for new users. Baseline 3 at one kept rating (1.199) is much worse than baseline 2, which ignores the user (0.986), because one rating sets the user's whole bias. Matrix factorization stays at 0.967. It needs about 5 ratings to be clearly better than knowing nothing (0.935 against 0.964) and about 20 to get to 0.893. With the full history it reaches 0.862.
+- Matrix factorization is the best of the three at every row, but the margin over baseline 3 is small once there are 10 or more ratings, and the shuffle-to-shuffle ranges overlap. The big advantage is at 0 to 5 ratings, and mostly comes from regularization and not from the hidden numbers.
+- How bad the miss is: for a new user about 0.1 stars worse than the same users with their full history (0.964 against 0.862). For a new movie about 0.17 worse than the overall 0.856 (1.026 at 0 ratings). Neither is catastrophic. With no ratings the model has only averages to go on, and for a new user it is only slightly better than the plain movie average (0.964 against 0.986).
+
+Limits:
+- The cold users are simulated. They are existing users with ratings removed, who may rate differently from real new users, who could be less engaged or have no history at all.
+- The cold-user runs train on about 19% fewer ratings, because the 100 users hold about 15,000 of the 80,669 training ratings. So the gap to the full-history row mixes "fewer ratings for the user" with "less training data overall", and the two are not separated.
+- The 100 users change with the shuffle, and their test ratings number about 3,300, so the ranges are wide (for example 0.897 to 1.053 at 0 ratings kept).
+- Test movies and users overlap across shuffles, as in the other parts.
+- The hybrid with content features (genres) for new movies was not tried. It is a stretch item in the plan.
