@@ -592,12 +592,51 @@ Limits:
 - The test piles overlap across shuffles, as in the other parts.
 - The fit times come from 10 jobs at once and from one machine.
 
+## Extra: top 10 from library models trained on who rated what (`src/library_hit_rate.py`)
+
+The second half of the library comparison. The hit rate test of Part E (same 10 shuffles, same pool of movies with at least 20 training ratings, a hit is a hidden rating of 4.0 or more in the top 10, movies already rated in training are skipped), with three models from `implicit` 0.7.3 that rank movies by who rated what:
+- **ALS:** matrix factorization for implicit feedback. A rating is a positive signal with a confidence, and every unrated movie counts as a weak negative.
+- **BPR:** a model trained on pairs (a movie the user rated, a movie they did not) to rank the first above the second.
+- **Item-item cosine:** a movie scores high if users who rated the movies this user rated also rated it.
+
+Each model was built in two ways: **rated at all** (every rating is a positive of the same size, the stars are ignored) and **liked only** (only ratings of 4.0 or more are positives). The settings were chosen in each shuffle on the validation pile, by hit rate: 18 settings for ALS (32 or 64 hidden numbers, regularization 0.01, 0.1, 1, confidence factor 1, 10, 40), 24 for BPR (32, 64, 128 hidden numbers, learning rate 0.01 and 0.05, regularization 0.01 and 0.1, 100 and 300 iterations) and 4 for item-item (K = 20, 50, 100, 200 neighbours). The chosen model was refitted on the full training pile and scored once on the test pile. The most-rated list and my matrix factorization were scored with the same code, and they reproduce Part E (0.565 and 0.319), which checks the scoring.
+
+Hit rate at 10 on the test pile (10 shuffles, mean with lowest to highest):
+
+| Method | Hit rate at 10 | Recall at 10 | Median ratings of the picks |
+|---|---|---|---|
+| Most rated | 0.565 (0.549 to 0.587) | 0.118 (0.110 to 0.127) | 185 |
+| My matrix factorization | 0.319 (0.306 to 0.339) | 0.047 (0.039 to 0.053) | 42 |
+| ALS, rated at all | 0.744 (0.708 to 0.768) | 0.227 (0.210 to 0.239) | 113 |
+| ALS, liked only | 0.758 (0.729 to 0.785) | 0.239 (0.226 to 0.258) | 106 |
+| BPR, rated at all | 0.630 (0.580 to 0.655) | 0.152 (0.137 to 0.162) | 58 |
+| BPR, liked only | 0.679 (0.637 to 0.720) | 0.179 (0.166 to 0.197) | 72 |
+| Item-item cosine, rated at all | 0.692 (0.666 to 0.716) | 0.191 (0.175 to 0.203) | 116 |
+| Item-item cosine, liked only | 0.722 (0.667 to 0.745) | 0.204 (0.189 to 0.217) | 134 |
+
+Every library model beats both the most-rated list and my matrix factorization on 10 of 10 shuffles. The gain over the most-rated list is +0.180 (ALS, rated at all), +0.193 (ALS, liked only), +0.127 and +0.157 (item-item), and +0.065 and +0.114 (BPR). The fits take 0.1 to 2.2 seconds (matrix factorization here: 58 seconds, with 10 jobs running at once).
+
+What it shows:
+- The loss in Part E was not a loss for personalization. A model that learns which movies go together in what people rate hits 0.744 to 0.758 against 0.565 for popularity, so the personal part carries real signal here. The "most rated" list was the best of the methods built before this step, not a ceiling.
+- Ignoring the stars costs little. Using only the ratings of 4.0 or more helps every model, by 0.014 (ALS), 0.030 (item-item) and 0.049 (BPR), but ALS that ignores the stars (0.744) still beats the most-rated list by 0.180.
+- It is not only popularity. The ALS picks have a median of 106 to 113 ratings, against 185 for the most-rated list and 62 for the hidden liked movies (Part F), and still hit more. My matrix factorization picks (42) lean the other way.
+- BPR is the weakest of the three with the settings that were tried (0.630 to 0.679), and it needed more care: the lowest values of the grid were chosen in most shuffles.
+
+Limits:
+- This test rewards exactly what these models learn. Hidden ratings are only for movies the user chose to rate, and the models are trained to predict which movies a user rates. The result shows they predict what users go on to rate and like, not that the movies are better for the user than a popular one. The test cannot separate the two.
+- Part of what users rate may come from the site itself (what MovieLens showed them) or from rating in one sitting. This was not tested.
+- The tuning is not equal. The library models were tuned on the validation hit rate over 4 to 24 settings. My matrix factorization keeps its settings from the rating error test (Part C) and was not tuned for the hit rate, as in Part E. A gap of 0.4 is much larger than tuning usually explains, but I did not retune it.
+- Many chosen settings are at the low edge of the grid: 32 hidden numbers (the lowest) in 19 of 20 ALS choices, learning rate 0.01, regularization 0.01 and 100 iterations (all the lowest) in 10 of 10 choices for BPR liked only, and K = 20 in 9 of 10 for item-item rated at all. Smaller or less trained models may do as well or better, and the grids were not extended.
+- The pool is movies with 20 or more training ratings, but the models were trained on all movies. 32% of hidden liked ratings are outside the pool and cannot be hit.
+- Only one library (`implicit`) and one setting of each model family. No hybrid with popularity was tried on these models, and the time-based cut was not used.
+- The test piles overlap across shuffles, so the ranges show the effect of the shuffle and not of fresh data.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
 
 ### What failed
-1. **Matrix factorization loses the top 10 test.** It has the lowest rating error (RMSE 0.856, best of the three baselines 0.894, wins 10 of 10 shuffles), but its top 10 lists hit a hidden liked movie for 0.319 of users. A plain list of the most-rated movies gets 0.565, and the content-based list 0.500. Matrix factorization loses to the most-rated list on all 10 shuffles. It was trained to predict ratings of movies people rated, not to find the movies they go on to watch, and its picks lean obscure (median 41 ratings against 62 for the hidden liked movies). A hybrid that blends popularity with the predicted rating recovers the loss (0.573) but only just beats the most-rated list (+0.008), so almost all of the hit rate comes from popularity.
+1. **Matrix factorization loses the top 10 test.** It has the lowest rating error (RMSE 0.856, best of the three baselines 0.894, wins 10 of 10 shuffles), but its top 10 lists hit a hidden liked movie for 0.319 of users. A plain list of the most-rated movies gets 0.565, and the content-based list 0.500. Matrix factorization loses to the most-rated list on all 10 shuffles. It was trained to predict ratings of movies people rated, not to find the movies they go on to watch, and its picks lean obscure (median 41 ratings against 62 for the hidden liked movies). A hybrid that blends popularity with the predicted rating recovers the loss (0.573) but only just beats the most-rated list (+0.008), so almost all of the hit rate comes from popularity. Library models trained on who rated what (ALS, BPR, item-item) beat the most-rated list on all 10 shuffles (ALS 0.744 to 0.758), so the loss is that of a model trained on the stars, not of personalization.
 2. **Tags did not help.** In the similarity test, genres and decade alone were best (rating gap 0.867 stars). Raw tags made it worse (0.911 at weight 1). Cleaning the tags stopped the harm but not more (0.869 against 0.867 with no tags). Only 16% of movies have a tag at all, and one user wrote 41% of the tag rows. Tags also broke some searches, such as The Matrix, whose rare tags matched Sliding Doors and Karate Kid.
 3. **The content features are thin.** MovieLens has no cast, director or plot, so the content side only sees genres and decade. The 9,734 movies with a genre or year collapse into 2,216 distinct vectors, so many movies look identical to the model. In the content-based top 10, many movies tie at similarity 1.00 and the order is decided by number of ratings, which pushes the list towards popular movies (65% of its picks are among the 100 most rated).
 4. **The clusters are mostly genre and decade, with weak structure.** Silhouette was 0.20 to 0.25 for k = 5 to 20, no k was clearly best, and the apparent rise of silhouette at larger k is an artefact of the repeated vectors. The 2D map keeps 19.9% of the variation. Cluster labels from tags were mostly noise.
@@ -608,6 +647,7 @@ Written from the results above. Every number is from this document.
 9. **The content prior for new movies did not help.** Giving a movie with no ratings the average bias of similar movies (genres and decade) made the RMSE worse in 10 of 10 shuffles (1.034 and 1.040 against 1.026). On shuffle 0 the prior was +0.168 while those movies' ratings were 0.146 below the average, because the movies it learns from are the well-liked ones with many ratings. From 2 to 19 ratings it gains 0.001 to 0.005 and the overall RMSE is unchanged at 0.856.
 
 ### Where the evidence is weaker than it looks
+- The hit rate test rewards models that predict which movies a user goes on to rate. The library ALS wins on it (0.744 against 0.565 for the most-rated list), but that does not show the movies are better for the user. The library models were also tuned on the hit rate and my matrix factorization was not.
 - Baseline 3 (movie average + user bias) is not the strongest simple baseline. A library bias model with regularization (Surprise `BaselineOnly`) scores 0.873, so the gain of matrix factorization over a good baseline is 0.017 and not 0.038. The comparison with the library is in "Extra: comparison with a library".
 - The 10 shuffles use random 80/20 splits of the same ratings, so their test piles overlap. The ranges show the effect of the shuffle, not of fresh data, and "wins 10 of 10" is less independent than it sounds.
 - The hit rate test counts only movies the user chose to rate. A liked movie the user never watched is a miss, and the test favours popular movies. 32% of the hidden liked ratings are outside the candidate pool (fewer than 20 training ratings), so no method can hit them.
@@ -617,7 +657,7 @@ Written from the results above. Every number is from this document.
 - One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
 
 ### What I would try next
-1. A model trained on who rated what, ignoring the stars (an implicit-feedback ranking model such as BPR), since that is the job the hit rate test measures and the hybrid suggests the rating model adds little to it.
+1. Write a model trained on who rated what by hand (the library ALS already reaches 0.744) and extend the grids whose best settings were at the edge. Then check it with a test that does not only count movies users chose to rate.
 2. A content prior for new movies that is centred correctly (the first version was +0.17 stars too high for movies with no ratings), or content features that carry more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts, to see whether matrix factorization still loses the top 10 when the test is the future.
 4. A larger dataset (the 32M version) to see whether the ranking of the methods holds, and with more users who have a real history over time.
