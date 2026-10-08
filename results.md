@@ -200,3 +200,16 @@ What this does and does not show:
 - The split shows when the neighbours are a real reason. User 1 is generous (+0.77) and the taste match is near zero (+0.00 to +0.11) for all their top picks, so those movies are recommended mostly because they are well liked by everyone, and the neighbour list adds little. User 3 is strict (-1.11) but the taste match is large (+0.78 to +1.29), and the neighbours (Saturn 3, Thing, Galaxy of Terror) make sense as a reason.
 - Predictions above 5 are cut to 5.00 for display (user 1's top four all show 5.00), but ranking uses the uncut score.
 - This is an explanation of the model, not a test. The model has seen every rating, so these numbers say nothing about accuracy.
+
+### Step 3: command line demo (`src/demo.py`)
+- Run from `src/`: `python demo.py USER [-n 10] [--refit]`. It prints a short profile of the user (number of ratings, average, the movies they rated highest), then the top N from the content-based method and the top N from matrix factorization, each with its reason.
+- The fitted matrix factorization model is saved to `data/mf_model.pkl` (gitignored). The first run takes about 43 seconds to fit, later runs about 1.4 seconds. `--refit` trains it again.
+- An unknown user id gives a clear error instead of a crash.
+- Both methods use all of the user's ratings, so this is a demo of the explanations, not a test of quality. Quality is measured in Part E.
+- Observed in the demo: the two methods often disagree. For user 3 the content-based top 3 are Jurassic Park, Independence Day and Alien (famous, matching genres), while matrix factorization gives Serenity, Waiting for Guffman and Payback. The content-based list is more popular and more obvious, and the learned one is more tied to this user's taste but harder to justify for a movie like Waiting for Guffman.
+
+### Step 3b: notebook demo (`notebooks/demo.ipynb`)
+- Same two methods as the command line demo, as a notebook: pick `USER_ID`, see the user's profile and a chart of their star ratings, the content-based top 10 with reasons, the matrix factorization top 10 as a table, the reason for the first pick, and a chart splitting each pick into movie pull and taste match.
+- The chart makes the Step 2 finding visible. For user 3, Payback and Pleasantville are almost pure taste picks (movie pull about 0.0), and Wyatt Earp is recommended even though its movie pull is negative. The two methods share only one movie in their top 10 (Blade Runner).
+- The notebook was run top to bottom with no errors, and its outputs are saved in the file.
+- It reuses the functions in `src/` and the saved model in `data/mf_model.pkl`, so it adds no new modelling.

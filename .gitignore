@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 plan.md
 notes.md
+.ipynb_checkpoints/
