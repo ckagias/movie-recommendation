@@ -52,6 +52,7 @@ Hit rate at 10 is the share of users who have at least one of their hidden liked
 ![Hit rate at 10 for each method](docs/img/hit_rate.png)
 
 - **Rating error.** Matrix factorization beats the best baseline on 10 of 10 shuffles, by 0.038 stars on average.
+- **ALS by hand.** A NumPy version of the implicit ALS (48 lines in `src/als.py`) reproduces the library's hit rate with the same untuned settings (0.748 against 0.738 rated at all, 0.759 against 0.759 liked only), and each user solve matches the library's exact one to 8.5e-6.
 - **Library top 10.** ALS, BPR and item-item models from `implicit`, trained on who rated what, beat the most-rated list on 10 of 10 shuffles (hit rate 0.744 to 0.758 for ALS, 0.692 to 0.722 for item-item, 0.630 to 0.679 for BPR, against 0.565). Ignoring the stars costs little. The test rewards predicting which movies people rate, and the library models were tuned on it while my matrix factorization was not, so this says what they predict, not that the lists please users more.
 - **Library check.** Surprise `SVD` with the same settings scores 0.856, the same as the hand-written model, so the implementation is sound (tuned, the library reaches 0.851). Its regularized bias-only model scores 0.873, better than my baseline 3 (0.894), so against that baseline the gain of matrix factorization is 0.017 and not 0.038. The library fits in about 2 seconds, against about a minute here.
 - **Top 10.** The non-personal most-rated list beats matrix factorization on 10 of 10 shuffles, and the content-based list beats it too. The model was trained to predict the stars of movies people rated, and the hidden liked movies are concentrated among the well-known ones. Its picks lean obscure (median 41 ratings against 62 for the hidden liked movies).
@@ -101,7 +102,7 @@ The full write-up, with the numbers and limits, is at the end of [`results.md`](
 
 ## What I would try next
 
-1. A hand-written model trained on who rated what (the library ALS reaches 0.744), and a test that does not only count movies users chose to rate.
+1. A test that does not only count movies users chose to rate, and wider search grids for the models trained on who rated what.
 2. A content prior for new movies that is centred correctly, or content features with more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts.
 4. The 32M version of MovieLens, to see whether the ranking of the methods holds.
@@ -133,6 +134,7 @@ python src/results_table.py
 | `notebooks/demo.ipynb` | the same demo in a notebook, with charts |
 | `python src/make_plots.py` | redraws the charts in `docs/img/` |
 | `python src/content_prior.py` | the content prior experiment (about 4 minutes) |
+| `python src/als_check.py` | the hand-written ALS against the library (about 2 minutes) |
 | `python src/library_hit_rate.py` | top 10 from library models trained on who rated what (several minutes) |
 | `python src/library_compare.py` | the comparison with Surprise (about 5 minutes) |
 | `python src/time_split.py` | the time-based split experiment (about 6 minutes) |
@@ -156,6 +158,7 @@ src/
   hit_rate.py, hybrid.py               top 10 hit rate and the hybrid re-rank
   content_prior.py                     content prior for movies with few ratings (genres and decade)
   library_hit_rate.py                  top 10 hit rate of the implicit library models (needs implicit)
+  als.py, als_check.py                 implicit-feedback ALS by hand and its check against the library
   library_compare.py                   my matrix factorization against Surprise (needs scikit-surprise)
   time_split.py                        time-based splits (oldest ratings train, newest test)
   popularity.py, cold_start.py, biggest_misses.py   the Part F analyses

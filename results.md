@@ -599,7 +599,7 @@ The second half of the library comparison. The hit rate test of Part E (same 10 
 - **BPR:** a model trained on pairs (a movie the user rated, a movie they did not) to rank the first above the second.
 - **Item-item cosine:** a movie scores high if users who rated the movies this user rated also rated it.
 
-Each model was built in two ways: **rated at all** (every rating is a positive of the same size, the stars are ignored) and **liked only** (only ratings of 4.0 or more are positives). The settings were chosen in each shuffle on the validation pile, by hit rate: 18 settings for ALS (32 or 64 hidden numbers, regularization 0.01, 0.1, 1, confidence factor 1, 10, 40), 24 for BPR (32, 64, 128 hidden numbers, learning rate 0.01 and 0.05, regularization 0.01 and 0.1, 100 and 300 iterations) and 4 for item-item (K = 20, 50, 100, 200 neighbours). The chosen model was refitted on the full training pile and scored once on the test pile. The most-rated list and my matrix factorization were scored with the same code, and they reproduce Part E (0.565 and 0.319), which checks the scoring.
+Each model was built in two ways: **rated at all** (every rating is a positive of the same size, the stars are ignored) and **liked only** (only ratings of 4.0 or more are positives). The settings were chosen in each shuffle on the validation pile, by hit rate: 18 settings for ALS (32 or 64 hidden numbers, regularization 0.01, 0.1, 1, and `alpha` 1, 10, 40, the confidence of a rated cell against 1 for an unrated cell, so 1 gives rated and unrated cells the same weight), 24 for BPR (32, 64, 128 hidden numbers, learning rate 0.01 and 0.05, regularization 0.01 and 0.1, 100 and 300 iterations) and 4 for item-item (K = 20, 50, 100, 200 neighbours). The chosen model was refitted on the full training pile and scored once on the test pile. The most-rated list and my matrix factorization were scored with the same code, and they reproduce Part E (0.565 and 0.319), which checks the scoring.
 
 Hit rate at 10 on the test pile (10 shuffles, mean with lowest to highest):
 
@@ -631,6 +631,39 @@ Limits:
 - Only one library (`implicit`) and one setting of each model family. No hybrid with popularity was tried on these models, and the time-based cut was not used.
 - The test piles overlap across shuffles, so the ranges show the effect of the shuffle and not of fresh data.
 
+## Extra: ALS written by hand (`src/als.py`, `src/als_check.py`)
+
+The best top-10 model of the previous section, written in NumPy and checked against the library. The objective is the implicit-feedback ALS one: `sum over all users and movies of c_ui (p_ui - x_u . y_i)^2 + lambda (sum |x_u|^2 + sum |y_i|^2)`. The preference `p_ui` is 1 if the user rated the movie (or rated it 4.0 or more, in the liked-only version) and 0 otherwise, and the confidence `c_ui` is a fixed value for a rated cell and 1 for every other cell. With the movie vectors fixed, each user's vector has an exact answer, `(Y^T Y + (c - 1) Y_u^T Y_u + lambda I) x_u = c sum of y_i over the user's rated movies`, where `Y_u` holds only the rated movies. `Y^T Y` is computed once per half-step, so a user costs one small solve over the movies they rated. The movie vectors are solved the same way with the roles swapped. The fit is 15 rounds of users then movies, with no learning rate.
+
+The library's `alpha` is the confidence of a rated cell (1 for an unrated cell), not `1 + alpha` as in the original paper. This was found by testing the conventions against the library's exact user solve, and the hand-written version uses the library's convention so that settings carry over.
+
+Checks (`python src/als_check.py`, shuffle 0, 32 hidden numbers, strength 0.1, confidence 10):
+- The loss, computed without building the 610 x 9,000 matrix, equals a brute-force computation on a 6 x 9 matrix (785.903199 for both).
+- The loss falls at every one of the 15 iterations (265,674 after the first, 166,193 after the last, no rise), as exact steps must give.
+- Given the library's final movie vectors, my solve for a user differs from the library's exact solve (`recalculate_user`, Cholesky) by at most 8.5e-6 over 10 users, which is float32 precision.
+
+Hit rate at 10 on the test pile, same test as the previous section, 10 shuffles, mean with lowest to highest. The settings are the same for all rows (32 hidden numbers, strength 0.1, confidence 10, 15 iterations) and nothing was tuned:
+
+| Model | Rated at all | Liked only |
+|---|---|---|
+| My ALS | 0.748 (0.720 to 0.771) | 0.759 (0.743 to 0.788) |
+| Library ALS, exact solves | 0.738 (0.711 to 0.768) | 0.759 (0.742 to 0.781) |
+| Library ALS, default solver (conjugate gradient) | 0.737 (0.708 to 0.766) | 0.761 (0.736 to 0.790) |
+
+Recall at 10 is 0.227, 0.225 and 0.226 (rated at all) and 0.239, 0.240 and 0.241 (liked only). My hit rate minus the library with exact solves, per shuffle: +0.009 (-0.007 to +0.040) rated at all, higher in 7 of 10 shuffles, and 0.000 (-0.012 to +0.014) liked only, higher in 6 of 10.
+
+What it shows:
+- The hand-written ALS matches the library. The difference is smaller than the spread between shuffles, and goes both ways. The earlier result (0.744 to 0.758) does not depend on a library detail.
+- Settings matter little here. The fixed settings give 0.738 to 0.761, against 0.744 to 0.758 for the settings tuned on validation per shuffle in the previous section.
+- The library's default solver (conjugate gradient) loses nothing against exact solves (0.737 against 0.738), and is about 4 times faster.
+- The pure NumPy version is not slow: 4.4 s (rated at all) and 2.8 s (liked only) per fit on 80,000 ratings, against 1.7 s and 0.9 s for the library with exact solves and 0.4 s and 0.2 s with its default solver (10 jobs at once). Matrix factorization with SGD in the Part C loop takes about 58 s.
+
+Limits:
+- In "rated at all" mine is higher by 0.009 on average and by up to 0.040 in one shuffle. The cause was not investigated. The starting point differs (mine starts only the movie vectors, from normal(0, 0.01)), and the problem is not convex, so the two can end in different places.
+- One setting was used. Whether the same match holds for other sizes, strengths or confidences was not tested, and the loss was only checked on shuffle 0.
+- The limits of the hit rate test from the previous section apply: it rewards predicting which movies users rate.
+- The test piles overlap across shuffles.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
@@ -657,7 +690,7 @@ Written from the results above. Every number is from this document.
 - One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
 
 ### What I would try next
-1. Write a model trained on who rated what by hand (the library ALS already reaches 0.744) and extend the grids whose best settings were at the edge. Then check it with a test that does not only count movies users chose to rate.
+1. Extend the grids whose best settings were at the edge (small ALS and BPR models, few iterations), and check the models trained on who rated what with a test that does not only count movies users chose to rate. The hand-written ALS already reproduces the library (0.748 and 0.759).
 2. A content prior for new movies that is centred correctly (the first version was +0.17 stars too high for movies with no ratings), or content features that carry more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts, to see whether matrix factorization still loses the top 10 when the test is the future.
 4. A larger dataset (the 32M version) to see whether the ranking of the methods holds, and with more users who have a real history over time.
