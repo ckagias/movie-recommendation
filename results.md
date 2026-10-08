@@ -242,7 +242,7 @@ Diagnosis on shuffle 0 only (a check on the cause, not a tuning step, and nothin
 | 100 | 80 | 0.708 | 0.629 | 0.602 | 0.565 |
 | 200 | 6 | 1.000 | 1.000 | 1.000 | 1.000 |
 
-- The matrix factorization picks are obscure. The median pick has 44 ratings at the 20-rating cutoff, so the model favours well-liked movies that few people have rated, while the hidden liked movies are mostly well known.
+- The matrix factorization picks lean obscure. The median pick has 44 ratings at the 20-rating cutoff, so the model favours well-liked movies that few people have rated. The hidden liked movies are somewhat better known (median 62 ratings over 10 shuffles, see Part F), so this explains part of the loss and not all of it.
 - The personal part adds something. The full score (0.334) beats movie bias alone (0.264), which is the non-personal part. The taste part on its own is the weakest (0.175), so it only helps on top of the bias.
 - Raising the cutoff narrows the gap only because the pool shrinks until every user gets nearly the same list. At 200 the pool has 6 movies and every method scores 1.000, which says nothing. A stricter cutoff does not fix the model.
 - No sign of a coding error. Random lands close to its expected rate (about 10 hidden liked movies among 1,058 candidates gives roughly 0.1), and the loss to the most-rated list shows on all 10 shuffles.
@@ -304,3 +304,29 @@ Reading the tables:
 - The content-based method cannot be scored by RMSE because it ranks movies and predicts no ratings. Its only scores are the hit rate and the similarity test.
 - The hit rate numbers use the pool of movies with at least 20 training ratings and the limits listed in step 2.
 - Baseline 1 gives every movie the same score, so it has no ranking.
+
+## Part F: Mistakes and limits
+
+### Does the model favor popular movies? (`src/popularity.py`)
+The top 10 lists from the hit rate test (same 10 shuffles, same pool of movies with at least 20 training ratings) were measured for how well known their movies are. Popularity is the number of training ratings. "Most rated" means the 100 movies with the most training ratings, which have at least 91 ratings (90 to 92). The last row measures the hidden liked movies, the target the lists are trying to hit.
+
+| List | Median ratings per recommended movie | Picks in the 100 most rated | Share of the pool ever recommended |
+|---|---|---|---|
+| Random | 35 (34 to 35) | 7.8% (7.2% to 8.2%) | 99.5% |
+| The most rated movies | 182 (176 to 189) | 100.0% | 5.0% (4.7% to 5.5%) |
+| Highest movie average | 37 (24 to 67) | 23.3% (7.2% to 40.8%) | 2.9% (2.5% to 3.3%) |
+| Content-based | 103 (101 to 105) | 64.7% (61.2% to 67.5%) | 36.3% (33.9% to 39.6%) |
+| Matrix factorization | 41 (37 to 44) | 23.3% (20.3% to 25.8%) | 30.8% (28.7% to 32.2%) |
+| Hidden liked movies (the target) | 62 (60 to 63) | 31.0% (29.7% to 32.0%) | n/a |
+
+What it shows:
+- Matrix factorization does not favor popular movies. It leans the other way: its picks are less known than the movies users actually liked (median 41 against 62 ratings, 23% against 31% in the 100 most rated). The earlier diagnosis showed that the movie bias carries much of its score, and movies with few, high ratings get large biases (for example A Streetcar Named Desire, 20 ratings, bias +0.82 in the demo).
+- The content-based list is the one that leans popular (median 103, 65% in the 100 most rated), because many movies tie at the top similarity and ties are broken by number of ratings. It is more popular than the target and less popular than the most-rated list.
+- The hidden liked movies are over-represented among the best known movies: 31% are in the 100 most rated, against 9.5% if they were spread evenly over the 1,058 movies in the pool (100 of 1,058). That is why a non-personal most-rated list scores a hit rate of 0.565, even though it is more popular than the target.
+- Personalization is real in how much is recommended. The most-rated list can reach only 5.0% of the pool and the highest movie average 2.9%, since nearly every user gets the same list (the users differ only by which of those movies they have already rated). Matrix factorization recommends 30.8% of the pool to someone and content-based 36.3%. These personal picks just do not land on the movies users go on to rate.
+- The highest movie average is unstable between shuffles (median 24 to 67, 7% to 41% in the most rated), because the top of a ranking by averages is taken by movies with a few high ratings.
+
+Limits:
+- Popularity here is the number of training ratings, which grows with how many people chose to rate a movie, and not a direct measure of how famous it is.
+- It describes the lists of the hit rate test, with its pool and its definition of liked (4.0 or more), not the demo lists.
+- The lists have not been checked for repeats of the same franchise or the same genre mix. Coverage counts distinct movies only.

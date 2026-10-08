@@ -52,6 +52,7 @@ def evaluate_seed(ratings, seed, model=None):
     rng = np.random.default_rng(seed)
     hit_flags = {name: [] for name in METHODS}
     recalls = {name: [] for name in METHODS}
+    picks = {name: [] for name in METHODS}
 
     for user_id, wanted in relevant.items():
         mine = train_by_user[user_id]
@@ -76,7 +77,9 @@ def evaluate_seed(ratings, seed, model=None):
             + pool_Q @ model["P"][u],
         }
         for name, score in scores.items():
-            hits = len(set(top_n(score, seen, popularity)) & wanted)
+            shown = top_n(score, seen, popularity)
+            picks[name].append(shown)
+            hits = len(set(shown) & wanted)
             hit_flags[name].append(hits > 0)
             recalls[name].append(hits / len(wanted))
 
@@ -86,6 +89,9 @@ def evaluate_seed(ratings, seed, model=None):
         "users scored": len(relevant),
         "pool size": len(pool_ids),
         "liked in pool": in_pool.mean(),
+        "picks": {name: np.array(rows) for name, rows in picks.items()},
+        "popularity": popularity,
+        "wanted popularity": np.concatenate([popularity[list(wanted)] for wanted in relevant]),
     }
 
 
