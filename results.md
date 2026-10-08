@@ -411,3 +411,32 @@ Limits:
 - The 100 users change with the shuffle, and their test ratings number about 3,300, so the ranges are wide (for example 0.897 to 1.053 at 0 ratings kept).
 - Test movies and users overlap across shuffles, as in the other parts.
 - The hybrid with content features (genres) for new movies was not tried. It is a stretch item in the plan.
+
+## What failed, and what I would try next
+
+Written from the results above. Every number is from this document.
+
+### What failed
+1. **Matrix factorization loses the top 10 test.** It has the lowest rating error (RMSE 0.856, best of the three baselines 0.894, wins 10 of 10 shuffles), but its top 10 lists hit a hidden liked movie for 0.319 of users. A plain list of the most-rated movies gets 0.565, and the content-based list 0.500. Matrix factorization loses to the most-rated list on all 10 shuffles. It was trained to predict ratings of movies people rated, not to find the movies they go on to watch, and its picks lean obscure (median 41 ratings against 62 for the hidden liked movies).
+2. **Tags did not help.** In the similarity test, genres and decade alone were best (rating gap 0.867 stars). Raw tags made it worse (0.911 at weight 1). Cleaning the tags stopped the harm but not more (0.869 against 0.867 with no tags). Only 16% of movies have a tag at all, and one user wrote 41% of the tag rows. Tags also broke some searches, such as The Matrix, whose rare tags matched Sliding Doors and Karate Kid.
+3. **The content features are thin.** MovieLens has no cast, director or plot, so the content side only sees genres and decade. The 9,734 movies with a genre or year collapse into 2,216 distinct vectors, so many movies look identical to the model. In the content-based top 10, many movies tie at similarity 1.00 and the order is decided by number of ratings, which pushes the list towards popular movies (65% of its picks are among the 100 most rated).
+4. **The clusters are mostly genre and decade, with weak structure.** Silhouette was 0.20 to 0.25 for k = 5 to 20, no k was clearly best, and the apparent rise of silhouette at larger k is an artefact of the repeated vectors. The 2D map keeps 19.9% of the variation. Cluster labels from tags were mostly noise.
+5. **Matrix factorization overfit at first.** With no regularization the error on unseen ratings fell to 0.872 after about 10 epochs and then rose to 0.933, while the training error kept falling. Regularization (0.1) fixed it. The learning rate was fixed by hand and not tuned.
+6. **New movies and new users are hard.** Matrix factorization misses by 1.026 stars on a movie with no training rating and 0.958 with one (0.856 overall), and by 0.964 for a simulated new user (0.862 with full history). For the simple baselines one rating is worse than none, because they take a single rating as the whole truth.
+7. **The biggest misses look unpredictable.** The worst 1% of ratings are mostly 0.5 or 1.0 stars on movies the user usually rates high (91% are 1.5 or lower, against 6% of all ratings), and they make up 12.1% of the squared error. Ratings alone do not tell a real dislike from a slip or an unusual use of the scale. This is a reading of the pattern, not a tested explanation.
+8. **The explanations are partial.** The content-based reason is true but weak for heavy users: all 15 examples scored 1.00, and the liked movie it names is the highest rated among ties, not proof it caused the pick. For matrix factorization, the breakdown of the prediction (average, generosity, movie pull, taste match) is exact, but the "closest liked movies" are a similarity view of the hidden numbers and not how the score is computed. For some users, such as user 1, the taste match is near zero, so the neighbours add little.
+
+### Where the evidence is weaker than it looks
+- The 10 shuffles use random 80/20 splits of the same ratings, so their test piles overlap. The ranges show the effect of the shuffle, not of fresh data, and "wins 10 of 10" is less independent than it sounds.
+- The hit rate test counts only movies the user chose to rate. A liked movie the user never watched is a miss, and the test favours popular movies. 32% of the hidden liked ratings are outside the candidate pool (fewer than 20 training ratings), so no method can hit them.
+- The cold-start users are simulated by removing ratings from existing users, and their runs train on about 19% less data.
+- The similarity test uses all ratings and not a held-out pile. Hidden-number similarity was not scored on it because the model learned from the same ratings.
+- Only `ml-latest-small` (100,836 ratings) was used, with a random split and no time-based split.
+- One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
+
+### What I would try next
+1. A hybrid re-rank for the top 10: popular movies filtered by predicted rating, with the blend chosen on a validation pile and scored once on the test pile. The popularity analysis suggests the target sits in the middle of the popularity range.
+2. A model trained on who rated what, ignoring the stars (an implicit-feedback ranking model such as BPR), since that is the job the hit rate test measures.
+3. Content features for new movies, so a movie with no ratings is not guessed from the averages alone.
+4. A time-based split (learn from older ratings, test on newer ones), which is harder and closer to real use.
+5. A larger dataset (the 32M version) to see whether the ranking of the methods holds.
