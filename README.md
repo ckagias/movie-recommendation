@@ -145,7 +145,7 @@ python src/results_table.py
 | `python src/time_split.py` | the time-based split experiment (about 6 minutes) |
 | `python src/hybrid.py` | the hybrid re-rank experiment (about 2 minutes) |
 
-Every script uses fixed random seeds, so a rerun gives the same numbers.
+Every script uses fixed random seeds. Reruns reproduce the numbers except for BPR, which varies by about 0.002 between fits.
 
 ## Repository layout
 
