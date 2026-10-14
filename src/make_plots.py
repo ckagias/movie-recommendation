@@ -59,6 +59,19 @@ HIT_RATE = [
     ("Highest movie average", 0.262, 0.205, 0.310, "reference"),
     ("Random list", 0.113, 0.095, 0.134, "reference"),
 ]
+# (mean, low, high) with 95% bootstrap intervals over users, copied from results.md (32M test pile)
+HIT_RATE_32M = [
+    ("Library ALS, liked only", 0.746, 0.742, 0.750, "library"),
+    ("My ALS, rated at all", 0.724, 0.720, 0.728, "built"),
+    ("Library ALS, rated at all", 0.723, 0.719, 0.727, "library"),
+    ("Item-item cosine, liked only", 0.694, 0.690, 0.698, "library"),
+    ("Item-item cosine, rated at all", 0.661, 0.657, 0.665, "library"),
+    ("BPR, liked only", 0.542, 0.537, 0.546, "library"),
+    ("BPR, rated at all", 0.517, 0.513, 0.522, "library"),
+    ("Most rated movies", 0.479, 0.474, 0.483, "reference"),
+    ("Highest movie average", 0.118, 0.114, 0.123, "reference"),
+    ("Random list", 0.006, 0.005, 0.007, "reference"),
+]
 BLEND = [
     (0.0, 0.319, 0.306, 0.339),
     (0.1, 0.477, 0.456, 0.518),
@@ -365,6 +378,18 @@ def hit_rate():
     )
 
 
+def hit_rate_32m():
+    bar_chart(
+        "hit_rate_32m.png",
+        "The ranking of the top 10 methods holds at 32 million ratings",
+        "Share of users with at least one hidden liked movie in their top 10, higher is better. Line is a 95% interval over users.\nModels on 48,754 users; the last two lists on a separate sample of 20,000 users.",
+        HIT_RATE_32M,
+        (0, 0.92),
+        lambda v: f"{v:.3f}",
+        "hit rate at 10",
+    )
+
+
 if __name__ == "__main__":
     set_style()
     star_counts()
@@ -378,6 +403,7 @@ if __name__ == "__main__":
         "RMSE in stars",
     )
     hit_rate()
+    hit_rate_32m()
     blend_curve()
     dot_range_chart(
         "similarity_gap.png",

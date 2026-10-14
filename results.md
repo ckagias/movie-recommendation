@@ -676,6 +676,106 @@ Limits:
 - The limits of the hit rate test from the previous section apply: it rewards predicting which movies users rate.
 - The test piles overlap across shuffles.
 
+## Extra: the 32M version of MovieLens (`src/split_32m.py`, `src/baselines_32m.py`, `src/library_32m.py`, `src/als_32m.py`)
+
+The same questions on `ml-32m`: 32,000,204 ratings, 200,948 users, 84,432 rated movies, 320 times the size of `ml-latest-small`. The question was whether the ordering of the methods found on 100k holds.
+
+Setup, which differs from the 100k tests:
+- **One fixed split, not 10 shuffles.** The ratings of each user are shuffled with a fixed seed and cut 70/15/15 into train (22,405,144), validation (4,797,530) and test (4,797,530). Every user keeps at least 14 train ratings and 3 test ratings, no user-movie pair is in two piles, and the same seed gives the same split. 0.09% of the test ratings are on movies with no train rating.
+- **Settings are chosen on the validation pile only**, by hit rate, and each model is scored once on the test pile.
+- **Intervals are bootstrap intervals over users** (1,000 resamples, 95%), so they show the spread over which users were sampled, not over splits. The 100k ranges (lowest to highest over shuffles) and these intervals are not the same kind of number.
+- **Hit rate is measured on 50,000 sampled users** (48,754 of them have a liked rating, 4.0 or more, in the candidate pool on the test pile). The pool is movies with at least 20 train ratings (20,204 of 77,557), and it holds 99.4% of the held-out liked ratings, against 68% at 100k. Seen movies are skipped as before.
+- **The random split is optimistic.** A later rating can train a model that is scored on an earlier one. The time-based cut of the 100k data was not repeated here.
+- My SGD matrix factorization from Part C was not run: the pure Python loop would take hours per fit at this size. The library models and the hand-written ALS were.
+
+Rating error (test pile, bootstrap interval over users; validation gives the same numbers to 3 digits):
+
+| Model | RMSE |
+|---|---|
+| Baseline 1, overall average | 1.059 (1.056 to 1.063) |
+| Baseline 2, movie average | 0.960 (0.957 to 0.964) |
+| Baseline 3, movie average + user bias | 0.859 (0.857 to 0.861) |
+
+At 100k the same three gave 1.043, 0.977 and 0.894, so the ladder has the same shape and baseline 3 is better at this size. A matrix factorization for ratings was not run here, so the claim that it beats the baselines on rating error is not rechecked.
+
+Hit rate at 10 on the test pile (48,754 users, settings chosen on the validation pile, interval over users):
+
+| Method | Hit rate at 10 | Recall at 10 | Gain over most rated | Median ratings of the picks |
+|---|---|---|---|---|
+| Most rated | 0.479 (0.474 to 0.483) | 0.094 | | 54,310 |
+| ALS, rated at all | 0.723 (0.719 to 0.727) | 0.203 | +0.244 (0.239 to 0.249) | 25,055 |
+| ALS, liked only | 0.746 (0.742 to 0.750) | 0.217 | +0.267 (0.263 to 0.272) | 24,964 |
+| Item-item cosine, rated at all | 0.661 (0.657 to 0.665) | 0.167 | +0.182 (0.177 to 0.187) | 30,600 |
+| Item-item cosine, liked only | 0.694 (0.690 to 0.698) | 0.182 | +0.215 (0.211 to 0.220) | 36,615 |
+| BPR, rated at all | 0.517 (0.513 to 0.522) | 0.120 | +0.039 (0.034 to 0.043) | 31,176 |
+| BPR, liked only | 0.542 (0.537 to 0.546) | 0.125 | +0.063 (0.059 to 0.068) | 29,690 |
+
+On a separate sample of 20,000 users the baselines give: random 0.006 (0.005 to 0.007), highest movie average 0.118 (0.114 to 0.123), most rated 0.482 (0.475 to 0.489). The most-rated list agrees with the row above, and the two samples differ only by sampling.
+
+Chosen settings (validation hit rate in brackets):
+- ALS rated at all: 64 hidden numbers, regularization 10, `alpha` 10 (0.728). ALS liked only: 64, regularization 1, `alpha` 10 (0.750).
+- BPR rated at all: 64, learning rate 0.00037, regularization 0.01, 200 iterations (0.517). BPR liked only: 128, learning rate 0.0011, regularization 0.01, 100 iterations (0.545).
+- Item-item rated at all: K = 5 (0.663). Liked only: K = 10 (0.698).
+- The search was a first grid (12 settings for ALS, 6 for BPR, K = 20 to 400) followed by steps along each setting while the best value was at the edge, so the grids reach 16 to 128 hidden numbers and regularization 0.01 to 30 for ALS, and 7 values of K for item-item. 15 or 16 settings were tried for ALS and BPR.
+
+My ALS on the full train pile (`src/als_32m.py`, 64 hidden numbers, regularization 10, `alpha` 10, 15 iterations, the settings chosen for the library ALS rated at all):
+
+| Pile | My ALS | Library ALS |
+|---|---|---|
+| Validation | 0.727 (0.724 to 0.731) | 0.728 (0.724 to 0.732) |
+| Test | 0.724 (0.720 to 0.728) | 0.723 (0.719 to 0.727) |
+
+My hit rate minus the library's on the test pile: +0.0016 (-0.001 to +0.004), so the two cannot be told apart. Recall is 0.204 and 0.203. One iteration takes about 20 seconds (12 s for the users, 8 s for the movies) and the 15 take 5 minutes, against about 1 second per iteration for the library (`src/scale_check.py`). The loss fell at every iteration (113.5 million after the first, 72.84 million after the last, change still -12,000 in the last step, so it had not fully converged). The loss computation had to be done in chunks of 500,000 ratings: building the score for all 22 million rated cells at once needs about 11 GB per array.
+
+### Side by side with the 100k results
+
+Same test code, different setup. The levels are not directly comparable (see the table of differences), the ordering is.
+
+Test pile, hit rate at 10 (100k: mean of 10 shuffles; 32M: one split):
+
+| Method | 100k | 32M | Gain over most rated, 100k | Gain over most rated, 32M |
+|---|---|---|---|---|
+| Random list | 0.113 | 0.006 | | |
+| Highest movie average | 0.262 | 0.118 | | |
+| Most rated | 0.565 | 0.479 | | |
+| ALS, rated at all | 0.744 | 0.723 | +0.180 | +0.244 |
+| ALS, liked only | 0.758 | 0.746 | +0.193 | +0.267 |
+| Item-item cosine, rated at all | 0.692 | 0.661 | +0.127 | +0.182 |
+| Item-item cosine, liked only | 0.722 | 0.694 | +0.157 | +0.215 |
+| BPR, rated at all | 0.630 | 0.517 | +0.065 | +0.039 |
+| BPR, liked only | 0.679 | 0.542 | +0.114 | +0.063 |
+| My ALS, rated at all | 0.748 (untuned, 32 hidden numbers) | 0.724 (settings of the library ALS) | | |
+| Content-based, matrix factorization, hybrid | 0.500, 0.319, 0.573 | not run | | |
+
+Rating error (RMSE): overall average 1.043 and 1.059, movie average 0.977 and 0.960, movie average + user bias 0.894 and 0.859 (100k and 32M). Matrix factorization is 0.856 at 100k and was not run at 32M.
+
+| | 100k | 32M |
+|---|---|---|
+| Ratings, users, movies | 100,836, 610, 9,742 | 32,000,204, 200,948, 84,432 |
+| Split | random 80/20 shuffles, 10 of them | one fixed 70/15/15 split inside each user |
+| Settings chosen on | a validation pile, per shuffle | the validation pile, once |
+| Uncertainty | lowest to highest over 10 shuffles | 95% bootstrap interval over users |
+| Users in the hit rate | all users with a liked rating | 50,000 sampled, 48,754 with a liked rating |
+| Liked ratings inside the candidate pool | 68% | 99.4% |
+| Search grids | fixed | first grid, then extended at the edges |
+| Matrix factorization with SGD | run | not run, the pure Python loop takes hours per fit |
+
+What it shows (the claims rechecked from the 100k results):
+- **Library ALS beats the most-rated list, and by more.** +0.244 and +0.267 here (0.180 and 0.193 at 100k). All intervals of the gain are far from zero. This held.
+- **The ordering of the library models held.** ALS, then item-item, then BPR, all above the most-rated list, in both the rated-at-all and liked-only versions. At 100k BPR gained +0.065 and +0.114; here +0.039 and +0.063, so it is only a little above popularity.
+- **The popularity list is weaker.** 0.479 here against 0.565 at 100k, and the highest-movie-average list is 0.118 against 0.262. With 77,557 movies in training and a pool of 20,204, ten popular movies cover less of what a user goes on to like.
+- **Liked only is better than rated at all** for every model (+0.023 ALS, +0.033 item-item, +0.025 BPR), as at 100k.
+- **The ALS picks are less popular than the most-rated list** (median 25,055 ratings against 54,310), as at 100k, so the gain is not only popularity.
+- **The hand-written ALS matches the library at this size too**, with settings it did not choose.
+- Matrix factorization with SGD on ratings losing to popularity (Part E) was not tested at this size, and neither was the hybrid.
+
+Limits:
+- Same test as before: it rewards predicting which movies users go on to rate, not whether the movies are better for the user.
+- One split. The bootstrap interval covers which users were drawn, not another split or another tuning run. The ALS fits were seeded and reproduce to the digit. BPR trains with threads and moved by up to 0.002 between two fits of the same settings (0.5175 and 0.5172 rated at all, 0.5403 and 0.5418 liked only). The table uses the second fit.
+- Item-item rated at all chose K = 5, the lowest value tried (the search stops at 5), so a smaller K might do better. The ALS and BPR choices are inside their grids.
+- The comparison to 100k is not exactly like for like: single fixed split against 10 shuffles, a candidate pool that covers 99.4% of liked ratings against 68%, 50,000 sampled users against 610, and grids that were extended at the edges against fixed grids. The ordering is comparable, the absolute levels are not.
+- Only `implicit`. Surprise was not run at this size, and the time-based cut, the content-based list and the hybrid were not repeated.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
@@ -698,11 +798,11 @@ Written from the results above. Every number is from this document.
 - The hit rate test counts only movies the user chose to rate. A liked movie the user never watched is a miss, and the test favours popular movies. 32% of the hidden liked ratings are outside the candidate pool (fewer than 20 training ratings), so no method can hit them.
 - The cold-start users are simulated by removing ratings from existing users, and their runs train on about 19% less data.
 - The similarity test uses all ratings and not a held-out pile. Hidden-number similarity was not scored on it because the model learned from the same ratings.
-- Only `ml-latest-small` (100,836 ratings) was used. Most scores come from random splits. The time-based split covers the rating error only (hit rate not rerun), with one split per cut, and most users rate everything in one short sitting.
+- Most scores come from `ml-latest-small` (100,836 ratings); the 32M run covers the baselines and the library models only (see "Extra: the 32M version"). Most scores come from random splits. The time-based split covers the rating error only (hit rate not rerun), with one split per cut, and most users rate everything in one short sitting.
 - One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
 
 ### What I would try next
 1. Extend the grids whose best settings were at the edge (small ALS and BPR models, few iterations), and check the models trained on who rated what with a test that does not only count movies users chose to rate. The hand-written ALS already reproduces the library (0.748 and 0.759).
 2. A content prior for new movies that is centred correctly (the first version was +0.17 stars too high for movies with no ratings), or content features that carry more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts, to see whether matrix factorization still loses the top 10 when the test is the future.
-4. A larger dataset (the 32M version) to see whether the ranking of the methods holds, and with more users who have a real history over time.
+4. The 32M version checked the ranking of the library models (it held), but not matrix factorization on ratings, the hybrid or the content-based list. A time-based cut at that size, where users have a real history, is the test that is still missing.

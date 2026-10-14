@@ -58,6 +58,10 @@ Hit rate at 10 is the share of users who have at least one of their hidden liked
 - **Top 10.** The non-personal most-rated list beats matrix factorization on 10 of 10 shuffles, and the content-based list beats it too. The model was trained to predict the stars of movies people rated, and the hidden liked movies are concentrated among the well-known ones. Its picks lean obscure (median 41 ratings against 62 for the hidden liked movies).
 - **Content prior for new movies.** Giving a movie with no ratings the average bias of similar movies (genres and decade) made the error worse in 10 of 10 shuffles (1.034 against 1.026), because the movies it learns from are the well-liked ones with many ratings. It gains 0.001 to 0.005 stars at 2 to 19 ratings, and the overall RMSE does not move.
 - **Time.** With the newest ratings hidden, every model gets worse and matrix factorization still comes first. Per-user cut: 0.891 against 0.939 for the best baseline. Global cut: 1.009 against 1.034, but 90.5% of that test is users who joined after the cutoff, so it mostly measures new users. Most users rate everything in one short sitting, so the cuts say little about taste changing over years. The hit rate was not rerun on them.
+- **32M ratings.** The same checks on `ml-32m` (32,000,204 ratings, one fixed 70/15/15 split, settings chosen on the validation pile, bootstrap intervals over users). The ordering held: ALS 0.723 to 0.746, item-item 0.661 to 0.694, BPR 0.517 to 0.542, against 0.479 for the most-rated list, and the hand-written ALS matches the library (0.724 against 0.723, difference +0.002 with an interval of -0.001 to 0.004). BPR is only a little above popularity at this size. The rating-error baselines give 1.059, 0.960 and 0.859. Matrix factorization with SGD, the hybrid and the time-based cuts were not run at this size. The 100k and 32M numbers side by side, with the differences in setup, are in [`results.md`](results.md#side-by-side-with-the-100k-results).
+
+![Hit rate at 10 on the 32M ratings](docs/img/hit_rate_32m.png)
+
 - **Hybrid.** Weighting the percentile of popularity and the percentile of predicted rating recovers the loss. The best blends put about 90% of the weight on popularity, and the hybrid beats the most-rated list by only 0.008 (higher in 7 of 10 shuffles), which is within the spread between shuffles.
 
 ![Hit rate against the popularity weight of the blend](docs/img/hybrid_blend.png)
@@ -105,7 +109,7 @@ The full write-up, with the numbers and limits, is at the end of [`results.md`](
 1. A test that does not only count movies users chose to rate, and wider search grids for the models trained on who rated what.
 2. A content prior for new movies that is centred correctly, or content features with more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts.
-4. The 32M version of MovieLens, to see whether the ranking of the methods holds.
+4. A time-based cut on the 32M ratings, where users have a real history, and the matrix factorization and the hybrid at that size.
 
 ## Run it
 
@@ -137,10 +141,11 @@ python src/results_table.py
 | `python src/als_check.py` | the hand-written ALS against the library (about 2 minutes) |
 | `python src/library_hit_rate.py` | top 10 from library models trained on who rated what (several minutes) |
 | `python src/library_compare.py` | the comparison with Surprise (about 5 minutes) |
+| `python src/split_32m.py`, `python src/baselines_32m.py`, `python src/library_32m.py`, `python src/als_32m.py` | the 32M run, after unzipping [`ml-32m`](https://files.grouplens.org/datasets/movielens/ml-32m.zip) into `data/ml-32m/` (the baselines take about 40 seconds and `als_32m.py` about 5 minutes) |
 | `python src/time_split.py` | the time-based split experiment (about 6 minutes) |
 | `python src/hybrid.py` | the hybrid re-rank experiment (about 2 minutes) |
 
-Every script uses fixed random seeds, so a rerun gives the same numbers.
+Every script uses fixed random seeds. Reruns reproduce the numbers except for BPR, which varies by about 0.002 between fits.
 
 ## Repository layout
 
@@ -161,6 +166,9 @@ src/
   als.py, als_check.py                 implicit-feedback ALS by hand and its check against the library
   library_compare.py                   my matrix factorization against Surprise (needs scikit-surprise)
   time_split.py                        time-based splits (oldest ratings train, newest test)
+  split_32m.py, baselines_32m.py       the 32M split and its baselines
+  scale_check.py, scale_eval.py        timing and the hit rate test on the 32M data
+  library_32m.py, als_32m.py           library models tuned on validation, and my ALS at 32M
   popularity.py, cold_start.py, biggest_misses.py   the Part F analyses
   results_table.py, make_plots.py      final tables and charts
   demo.py                              command line demo
