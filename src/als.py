@@ -6,6 +6,7 @@ N_FACTORS = 32
 REGULARIZATION = 0.1
 CONFIDENCE = 10.0
 N_ITERATIONS = 15
+LOSS_CHUNK = 500_000
 
 
 def interaction_matrix(frame, user_index, movie_index, liked_from=None):
@@ -33,8 +34,11 @@ def solve_side(fixed, interactions, confidence, regularization):
 def loss(users, items, interactions, confidence, regularization):
     everything = np.sum((users.T @ users) * (items.T @ items))
     rows, columns = interactions.nonzero()
-    scores = np.sum(users[rows] * items[columns], axis=1)
-    rated_correction = np.sum(confidence * (1 - scores) ** 2 - scores**2)
+    rated_correction = 0.0
+    for start in range(0, len(rows), LOSS_CHUNK):
+        part = slice(start, start + LOSS_CHUNK)
+        scores = np.sum(users[rows[part]] * items[columns[part]], axis=1)
+        rated_correction += np.sum(confidence * (1 - scores) ** 2 - scores**2)
     penalty = regularization * (np.sum(users**2) + np.sum(items**2))
     return everything + rated_correction + penalty
 
