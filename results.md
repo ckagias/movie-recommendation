@@ -727,6 +727,39 @@ My ALS on the full train pile (`src/als_32m.py`, 64 hidden numbers, regularizati
 
 My hit rate minus the library's on the test pile: +0.0016 (-0.001 to +0.004), so the two cannot be told apart. Recall is 0.204 and 0.203. One iteration takes about 20 seconds (12 s for the users, 8 s for the movies) and the 15 take 5 minutes, against about 1 second per iteration for the library (`src/scale_check.py`). The loss fell at every iteration (113.5 million after the first, 72.84 million after the last, change still -12,000 in the last step, so it had not fully converged). The loss computation had to be done in chunks of 500,000 ratings: building the score for all 22 million rated cells at once needs about 11 GB per array.
 
+### Side by side with the 100k results
+
+Same test code, different setup. The levels are not directly comparable (see the table of differences), the ordering is.
+
+Test pile, hit rate at 10 (100k: mean of 10 shuffles; 32M: one split):
+
+| Method | 100k | 32M | Gain over most rated, 100k | Gain over most rated, 32M |
+|---|---|---|---|---|
+| Random list | 0.113 | 0.006 | | |
+| Highest movie average | 0.262 | 0.118 | | |
+| Most rated | 0.565 | 0.479 | | |
+| ALS, rated at all | 0.744 | 0.723 | +0.180 | +0.244 |
+| ALS, liked only | 0.758 | 0.746 | +0.193 | +0.267 |
+| Item-item cosine, rated at all | 0.692 | 0.661 | +0.127 | +0.182 |
+| Item-item cosine, liked only | 0.722 | 0.694 | +0.157 | +0.215 |
+| BPR, rated at all | 0.630 | 0.517 | +0.065 | +0.039 |
+| BPR, liked only | 0.679 | 0.542 | +0.114 | +0.063 |
+| My ALS, rated at all | 0.748 (untuned, 32 hidden numbers) | 0.724 (settings of the library ALS) | | |
+| Content-based, matrix factorization, hybrid | 0.500, 0.319, 0.573 | not run | | |
+
+Rating error (RMSE): overall average 1.043 and 1.059, movie average 0.977 and 0.960, movie average + user bias 0.894 and 0.859 (100k and 32M). Matrix factorization is 0.856 at 100k and was not run at 32M.
+
+| | 100k | 32M |
+|---|---|---|
+| Ratings, users, movies | 100,836, 610, 9,742 | 32,000,204, 200,948, 84,432 |
+| Split | random 80/20 shuffles, 10 of them | one fixed 70/15/15 split inside each user |
+| Settings chosen on | a validation pile, per shuffle | the validation pile, once |
+| Uncertainty | lowest to highest over 10 shuffles | 95% bootstrap interval over users |
+| Users in the hit rate | all users with a liked rating | 50,000 sampled, 48,754 with a liked rating |
+| Liked ratings inside the candidate pool | 68% | 99.4% |
+| Search grids | fixed | first grid, then extended at the edges |
+| Matrix factorization with SGD | run | not run, the pure Python loop takes hours per fit |
+
 What it shows (the claims rechecked from the 100k results):
 - **Library ALS beats the most-rated list, and by more.** +0.244 and +0.267 here (0.180 and 0.193 at 100k). All intervals of the gain are far from zero. This held.
 - **The ordering of the library models held.** ALS, then item-item, then BPR, all above the most-rated list, in both the rated-at-all and liked-only versions. At 100k BPR gained +0.065 and +0.114; here +0.039 and +0.063, so it is only a little above popularity.
