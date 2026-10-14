@@ -146,33 +146,3 @@ python src/results_table.py
 | `python src/hybrid.py` | the hybrid re-rank experiment (about 2 minutes) |
 
 Every script uses fixed random seeds. Reruns reproduce the numbers except for BPR, which varies by about 0.002 between fits.
-
-## Repository layout
-
-```
-src/
-  explore.py                           counts, sparsity and star values of the data
-  split.py, baselines.py, mf.py        shuffled splits, the three baselines, matrix factorization
-  movie_text.py, tfidf.py, cosine.py   movie text, TF-IDF and cosine similarity by hand
-  similar.py, similarity_eval.py       "movies like this one" and the rating-gap test
-  tag_weights.py, clean_tags.py        tag weight and tag cleaning experiments
-  clusters.py, choose_k.py             K-Means, PCA map and the search for k
-  choose_factors.py, choose_regularization.py   settings chosen on the validation pile
-  final_score.py                       matrix factorization against the baselines (RMSE)
-  explain_content.py, explain_mf.py, explain_als.py   reasons for recommendations
-  hit_rate.py, hybrid.py               top 10 hit rate and the hybrid re-rank
-  content_prior.py                     content prior for movies with few ratings (genres and decade)
-  library_hit_rate.py                  top 10 hit rate of the implicit library models (needs implicit)
-  als.py, als_check.py                 implicit-feedback ALS by hand and its check against the library
-  library_compare.py                   my matrix factorization against Surprise (needs scikit-surprise)
-  time_split.py                        time-based splits (oldest ratings train, newest test)
-  split_32m.py, baselines_32m.py       the 32M split and its baselines
-  scale_check.py, scale_eval.py        timing and the hit rate test on the 32M data
-  library_32m.py, als_32m.py           library models tuned on validation, and my ALS at 32M
-  popularity.py, cold_start.py, biggest_misses.py   the Part F analyses
-  results_table.py, make_plots.py      final tables and charts
-  demo.py                              command line demo
-notebooks/demo.ipynb                   notebook demo
-docs/img/                              charts used in this README and in results.md
-results.md                             every result, with setup and limits
-```
