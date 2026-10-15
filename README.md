@@ -65,6 +65,11 @@ Hit rate at 10 is the share of users who have at least one of their hidden liked
 ![Hit rate at 10 on the 32M ratings](docs/img/hit_rate_32m.png)
 
 - **Neural models.** On the 100k ratings, PyTorch matrix factorization reproduces the NumPy one (RMSE 0.857 against 0.856), and neural collaborative filtering, which replaces the dot product with an MLP, is worse in 10 of 10 shuffles (0.865). A two-tower model with plain embedding towers, trained to rank rated movies above random ones, gets a hit rate of 0.725 (rated at all) and 0.747 (liked only), above the library BPR (0.630 and 0.679) and item-item (0.692 and 0.722) and below ALS (0.744 and 0.758) with overlapping ranges. Putting an MLP on each tower drops it to 0.604 and 0.623. The settings were chosen on validation piles and the models are ids only, so this is not a tuned comparison with ALS. Details in [`results.md`](results.md#extra-neural-models-in-pytorch-srctorch_datapy-srctorch_mfpy-srctorch_ncfpy-srctorch_twotowerpy).
+
+![RMSE of the neural model against matrix factorization](docs/img/neural_rmse.png)
+
+![Hit rate at 10 of the two-tower models against the library models](docs/img/hit_rate_neural.png)
+
 - **Hybrid.** Weighting the percentile of popularity and the percentile of predicted rating recovers the loss. The best blends put about 90% of the weight on popularity, and the hybrid beats the most-rated list by only 0.008 (higher in 7 of 10 shuffles), which is within the spread between shuffles.
 
 ![Hit rate against the popularity weight of the blend](docs/img/hybrid_blend.png)

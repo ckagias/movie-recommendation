@@ -809,7 +809,11 @@ Tuning on the validation pile (3 shuffles, 5 grids, validation RMSE):
 | Matrix factorization, PyTorch | 0.857 (0.847 to 0.865) |
 | Neural collaborative filtering | 0.865 (0.850 to 0.877) |
 
-The neural model is worse in 10 of 10 shuffles, by 0.008 on average (0.003 to 0.015). With weight decay the best epoch moved from 3 to 8 to 23, and the training RMSE at the best epoch is 0.794 against 0.865 on the test pile.
+![RMSE of the neural model against matrix factorization](docs/img/neural_rmse.png)
+
+The neural model is worse in 10 of 10 shuffles, by 0.008 on average (0.003 to 0.015). With weight decay the best epoch moved from 3 to 8 to 23, and the training RMSE at the best epoch is 0.794 against 0.865 on the test pile. On the chart's shuffle (0) weight decay moves the peak later but not lower (about 0.872 either way); its gain shows in the average over the 3 tuning shuffles (0.868 against 0.872).
+
+![Validation RMSE of the neural model by epoch, with and without weight decay](docs/img/neural_overfit.png)
 
 ### Step 3: two-tower model with a ranking loss (`src/torch_twotower.py`, `src/torch_twotower_tune.py`, `src/torch_twotower_final.py`)
 
@@ -836,6 +840,8 @@ Hit rate at 10 on the test pile (10 shuffles, mean with lowest to highest):
 | Two-tower, embeddings, liked only | 0.747 (0.727 to 0.776) | 0.231 (0.219 to 0.259) | 115 |
 | Two-tower, MLP towers, rated at all | 0.604 (0.563 to 0.632) | 0.139 (0.120 to 0.149) | 82 |
 | Two-tower, MLP towers, liked only | 0.623 (0.597 to 0.660) | 0.148 (0.136 to 0.168) | 81 |
+
+![Hit rate at 10 of the two-tower models against the library models](docs/img/hit_rate_neural.png)
 
 The most-rated list reproduces 0.565 (0.549 to 0.587) in the same run, which checks the scoring. The numbers for the library models are from "Extra: top 10 from library models trained on who rated what".
 

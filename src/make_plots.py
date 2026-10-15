@@ -72,6 +72,25 @@ HIT_RATE_32M = [
     ("Highest movie average", 0.118, 0.114, 0.123, "reference"),
     ("Random list", 0.006, 0.005, 0.007, "reference"),
 ]
+NEURAL_RMSE = [
+    ("Baseline 3, movie average + user bias", 0.894, 0.881, 0.899, "reference"),
+    ("Neural collaborative filtering (PyTorch)", 0.865, 0.850, 0.877, "built"),
+    ("Matrix factorization (PyTorch)", 0.857, 0.847, 0.865, "built"),
+    ("Matrix factorization (NumPy)", 0.856, 0.843, 0.862, "built"),
+]
+NEURAL_HIT_RATE = [
+    ("ALS, liked only", 0.758, 0.729, 0.785, "library"),
+    ("Two-tower, embeddings, liked only", 0.747, 0.727, 0.776, "built"),
+    ("ALS, rated at all", 0.744, 0.708, 0.768, "library"),
+    ("Two-tower, embeddings, rated at all", 0.725, 0.703, 0.744, "built"),
+    ("Item-item cosine, liked only", 0.722, 0.667, 0.745, "library"),
+    ("Item-item cosine, rated at all", 0.692, 0.666, 0.716, "library"),
+    ("BPR, liked only", 0.679, 0.637, 0.720, "library"),
+    ("BPR, rated at all", 0.630, 0.580, 0.655, "library"),
+    ("Two-tower, MLP towers, liked only", 0.623, 0.597, 0.660, "built"),
+    ("Two-tower, MLP towers, rated at all", 0.604, 0.563, 0.632, "built"),
+    ("Most rated movies", 0.565, 0.549, 0.587, "reference"),
+]
 BLEND = [
     (0.0, 0.319, 0.306, 0.339),
     (0.1, 0.477, 0.456, 0.518),
@@ -390,6 +409,78 @@ def hit_rate_32m():
     )
 
 
+def neural_rmse():
+    dot_range_chart(
+        "neural_rmse.png",
+        "A neural model does not beat the dot product on rating error",
+        "RMSE in stars on the test pile, lower is better. Dot is the mean of 10 shuffles, line is lowest to highest.",
+        NEURAL_RMSE,
+        (0.835, 0.905),
+        "RMSE in stars (the axis does not start at zero)",
+        left=0.45,
+    )
+
+
+def neural_hit_rate():
+    bar_chart(
+        "hit_rate_neural.png",
+        "A two-tower model gets close to ALS, and MLP towers do worse",
+        "Share of users with at least one hidden liked movie in their top 10, higher is better.\nLine is lowest to highest of 10 shuffles. The library models are the ones from the earlier hit rate test.",
+        NEURAL_HIT_RATE,
+        (0, 0.92),
+        lambda v: f"{v:.3f}",
+        "hit rate at 10",
+        left=0.42,
+    )
+
+
+def neural_overfit(seed=0):
+    from split import load_ratings, split_ratings, split_validation
+    from torch_data import make_datasets
+    import torch_mf
+    import torch_ncf
+
+    train_all, test = split_ratings(load_ratings(), seed)
+    train, validation = split_validation(train_all, seed)
+    train_set, validation_set, _, user_index, movie_index = make_datasets(train, validation, test)
+    n_users, n_movies = len(user_index), len(movie_index)
+
+    _, mf_history, _ = torch_mf.fit(
+        train_set, validation_set, n_users, n_movies,
+        torch_mf.N_FACTORS, torch_mf.LEARNING_RATE, torch_mf.REGULARIZATION, seed,
+    )
+    mf_best_epoch, _, mf_best = min(mf_history, key=lambda h: h[2])
+
+    series = [("Neural collaborative filtering, no weight decay", 0.0, ORANGE), ("Neural collaborative filtering, weight decay 0.003", torch_ncf.WEIGHT_DECAY, AQUA)]
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    layout(fig, 0.1, 0.96, 1.3, 1.3)
+    ax.axhline(mf_best, color=BLUE, linewidth=2, zorder=2)
+    ax.text(24.8, mf_best - 0.0025, f"matrix factorization, best of {len(mf_history)} epochs (epoch {mf_best_epoch}): {mf_best:.3f}", color=SECONDARY, fontsize=9.5, ha="right", va="top")
+    for name, decay, color in series:
+        _, history, _ = torch_ncf.fit(
+            train_set, validation_set, n_users, n_movies, torch_ncf.N_FACTORS, torch_ncf.HIDDEN_SIZES,
+            torch_ncf.DROPOUT, torch_ncf.LEARNING_RATE, torch_ncf.REGULARIZATION, seed, weight_decay=decay,
+        )
+        epochs = [h[0] for h in history]
+        ax.plot(epochs, [h[2] for h in history], color=color, linewidth=2, label=name, zorder=3)
+        best = min(history, key=lambda h: h[2])
+        ax.plot(best[0], best[2], "o", markersize=9, color=color, markeredgecolor=SURFACE, markeredgewidth=2, zorder=4)
+    ax.set_xlim(0, 25)
+    ax.set_ylim(0.855, 0.945)
+    ax.set_xlabel("epoch", fontsize=9)
+    ax.set_ylabel("validation RMSE in stars (lower is better)", fontsize=9)
+    ax.yaxis.grid(True)
+    ax.set_axisbelow(True)
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower left", ncol=1, frameon=False, bbox_to_anchor=(0.1, 0.0), fontsize=9)
+    headline(
+        fig,
+        "Without weight decay the neural model peaks at epoch 3",
+        "RMSE on the validation pile, shuffle 0. Dots mark the epoch kept by early stopping.\nWeight decay moves the peak to epoch 13, but not to a lower score on this shuffle.",
+    )
+    save(fig, "neural_overfit.png")
+
+
 if __name__ == "__main__":
     set_style()
     star_counts()
@@ -425,3 +516,6 @@ if __name__ == "__main__":
     cold_start()
     pull_versus_taste(demo.load_model(refit=False))
     cluster_map()
+    neural_rmse()
+    neural_hit_rate()
+    neural_overfit()
