@@ -7,3 +7,4 @@ ipykernel==7.4.0
 scikit-surprise==1.1.5
 implicit==0.7.3
 torch==2.14.1
+pytest==9.1.1
