@@ -47,11 +47,9 @@ def rmse(model, dataset):
         return torch.sqrt(((prediction - dataset.ratings) ** 2).mean()).item()
 
 
-def fit(train_set, validation_set, n_users, n_movies, n_factors, learning_rate, regularization, seed,
-        max_epochs=MAX_EPOCHS, patience=PATIENCE):
-    torch.manual_seed(seed)
-    model = MatrixFactorization(n_users, n_movies, n_factors, train_set.ratings.mean().item())
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+def train_model(model, train_set, validation_set, learning_rate, regularization, seed,
+                max_epochs=MAX_EPOCHS, patience=PATIENCE, weight_decay=0.0):
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     loader = make_loader(train_set, shuffle=True, seed=seed)
 
     history = []
@@ -74,6 +72,13 @@ def fit(train_set, validation_set, n_users, n_movies, n_factors, learning_rate, 
 
     model.load_state_dict(best_state)
     return model, history, best_epoch
+
+
+def fit(train_set, validation_set, n_users, n_movies, n_factors, learning_rate, regularization, seed,
+        max_epochs=MAX_EPOCHS, patience=PATIENCE):
+    torch.manual_seed(seed)
+    model = MatrixFactorization(n_users, n_movies, n_factors, train_set.ratings.mean().item())
+    return train_model(model, train_set, validation_set, learning_rate, regularization, seed, max_epochs, patience)
 
 
 if __name__ == "__main__":
