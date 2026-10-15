@@ -1,8 +1,8 @@
 # Movie recommender on MovieLens
 
-A recommender built from scratch on the MovieLens `ml-latest-small` data (100,836 ratings, 610 users, 9,742 movies). It has content-based similarity, a map of the movies, rating prediction with matrix factorization written in NumPy, a reason for every recommendation, and an evaluation that includes the places where it fails.
+A recommender built from scratch on the MovieLens `ml-latest-small` data (100,836 ratings, 610 users, 9,742 movies). It has content-based similarity, a map of the movies, rating prediction with matrix factorization written in NumPy and again in PyTorch, neural models, a reason for every recommendation, and an evaluation that includes the places where it fails.
 
-**Main finding.** Matrix factorization predicts ratings better than every baseline (RMSE 0.856 against 0.894 for the best baseline, better on 10 of 10 shuffles). As a top 10 list it loses to a plain list of the most-rated movies (hit rate 0.319 against 0.565). A library model trained on who rated what (ALS) beats both (0.744). Blending popularity into the model recovers the loss (0.573), but almost all of that score comes from popularity.
+**Main finding.** Matrix factorization predicts ratings better than every baseline (RMSE 0.856 against 0.894 for the best baseline, better on 10 of 10 shuffles). As a top 10 list it loses to a plain list of the most-rated movies (hit rate 0.319 against 0.565). A library model trained on who rated what (ALS) beats both (0.744). Blending popularity into the model recovers the loss (0.573), but almost all of that score comes from popularity. Neural models did not beat the dot product: a two-tower model trained with a ranking loss gets a hit rate of 0.725 to 0.747, just under ALS, and putting an MLP in place of the dot product makes both the rating error and the hit rate worse.
 
 ## The question
 
@@ -29,6 +29,8 @@ Credit: F. Maxwell Harper and Joseph A. Konstan. 2015. The MovieLens Datasets: H
 - **Explanations.** A reason for each recommendation, for both the content-based method and matrix factorization.
 - **Evaluation.** RMSE, hit rate at 10, a similarity test, cold start, the biggest misses, and how popular each method's picks are.
 - **A hybrid re-rank** of popularity and predicted rating, with its weight chosen on a validation pile.
+- **Neural models in PyTorch.** Matrix factorization rebuilt with automatic gradients (checked against the NumPy version), neural collaborative filtering (an MLP over the joined user and movie vectors) and a two-tower model trained with a ranking loss, scored with the same code, splits and candidate pool as the other models.
+- **Tests.** The time-based splits are checked for leakage and the RMSE and hit rate code against hand-worked examples (`python -m pytest tests`).
 
 ## Results
 
@@ -62,6 +64,7 @@ Hit rate at 10 is the share of users who have at least one of their hidden liked
 
 ![Hit rate at 10 on the 32M ratings](docs/img/hit_rate_32m.png)
 
+- **Neural models.** On the 100k ratings, PyTorch matrix factorization reproduces the NumPy one (RMSE 0.857 against 0.856), and neural collaborative filtering, which replaces the dot product with an MLP, is worse in 10 of 10 shuffles (0.865). A two-tower model with plain embedding towers, trained to rank rated movies above random ones, gets a hit rate of 0.725 (rated at all) and 0.747 (liked only), above the library BPR (0.630 and 0.679) and item-item (0.692 and 0.722) and below ALS (0.744 and 0.758) with overlapping ranges. Putting an MLP on each tower drops it to 0.604 and 0.623. The settings were chosen on validation piles and the models are ids only, so this is not a tuned comparison with ALS. Details in [`results.md`](results.md#extra-neural-models-in-pytorch-srctorch_datapy-srctorch_mfpy-srctorch_ncfpy-srctorch_twotowerpy).
 - **Hybrid.** Weighting the percentile of popularity and the percentile of predicted rating recovers the loss. The best blends put about 90% of the weight on popularity, and the hybrid beats the most-rated list by only 0.008 (higher in 7 of 10 shuffles), which is within the spread between shuffles.
 
 ![Hit rate against the popularity weight of the blend](docs/img/hybrid_blend.png)
@@ -100,6 +103,7 @@ The full write-up, with the numbers and limits, is at the end of [`results.md`](
 
 ![K-Means clusters on the 2D map](docs/img/cluster_map.png)
 
+- **Neural models did not beat the dot product.** An MLP over the joined vectors scores 0.865 RMSE against 0.857, and MLP towers score a hit rate 0.12 below plain embedding towers. The towers use ids only, and the grids were small.
 - **The biggest misses look unpredictable.** The worst 1% of ratings are mostly 0.5 or 1.0 stars on movies the user usually rates high, and they make up 12.1% of the squared error.
 - **The explanations are partial.** The prediction breakdown is exact, but the closest liked movies are a similarity view of the hidden numbers, not how the score is computed.
 - **The evidence is weaker than it looks.** The 10 shuffles overlap, the hit rate test only counts movies people chose to rate and so favours popular ones, and the cold-start users are simulated.
@@ -110,6 +114,7 @@ The full write-up, with the numbers and limits, is at the end of [`results.md`](
 2. A content prior for new movies that is centred correctly, or content features with more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts.
 4. A time-based cut on the 32M ratings, where users have a real history, and the matrix factorization and the hybrid at that size.
+5. Item features (genres, decade) in the towers of the neural models, longer training, and a neural run on the 32M ratings.
 
 ## Run it
 
@@ -118,7 +123,7 @@ Tested on Python 3.12. Run everything from the repository root.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # on Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt     # for a CPU-only PyTorch: pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
 
 mkdir -p data
 curl -L -o data/ml-latest-small.zip https://files.grouplens.org/datasets/movielens/ml-latest-small.zip
@@ -144,5 +149,10 @@ python src/results_table.py
 | `python src/split_32m.py`, `python src/baselines_32m.py`, `python src/library_32m.py`, `python src/als_32m.py` | the 32M run, after unzipping [`ml-32m`](https://files.grouplens.org/datasets/movielens/ml-32m.zip) into `data/ml-32m/` (the baselines take about 40 seconds and `als_32m.py` about 5 minutes) |
 | `python src/time_split.py` | the time-based split experiment (about 6 minutes) |
 | `python src/hybrid.py` | the hybrid re-rank experiment (about 2 minutes) |
+| `python src/torch_data.py` | checks the PyTorch dataset and loader (shapes, id mapping, seeded shuffling) |
+| `python src/torch_mf_final.py` | PyTorch matrix factorization against the NumPy one on the 10 shuffles (about 8 minutes; the settings were chosen with `src/torch_mf_tune.py`) |
+| `python src/torch_ncf_final.py` | neural collaborative filtering against PyTorch matrix factorization (about 6 minutes; tuning in `src/torch_ncf_tune.py`) |
+| `python src/torch_twotower_final.py` | hit rate of the two-tower models on the 10 shuffles (about 40 minutes with 10 processes; tuning in `src/torch_twotower_tune.py`) |
+| `python -m pytest tests` | the split and scoring tests (they need `data/ratings.csv`) |
 
 Every script uses fixed random seeds. Reruns reproduce the numbers except for BPR, which varies by about 0.002 between fits.

@@ -776,6 +776,83 @@ Limits:
 - The comparison to 100k is not exactly like for like: single fixed split against 10 shuffles, a candidate pool that covers 99.4% of liked ratings against 68%, 50,000 sampled users against 610, and grids that were extended at the edges against fixed grids. The ordering is comparable, the absolute levels are not.
 - Only `implicit`. Surprise was not run at this size, and the time-based cut, the content-based list and the hybrid were not repeated.
 
+## Extra: neural models in PyTorch (`src/torch_data.py`, `src/torch_mf.py`, `src/torch_ncf.py`, `src/torch_twotower.py`)
+
+The question: does a model with a nonlinear part beat the dot product? The learned models above (matrix factorization, ALS, BPR) are linear in the user and movie numbers: a score is a dot product plus biases. Three PyTorch models on the same splits, with the same scoring code as the earlier parts. PyTorch 2.14.1, CPU build (the GPU is AMD and was not used).
+
+### Step 1: matrix factorization rebuilt in PyTorch (`src/torch_mf.py`, `src/torch_mf_tune.py`, `src/torch_mf_final.py`)
+
+Same model and objective as `src/mf.py`: global average, user and movie biases and a dot product of 50 hidden numbers, a squared error plus a penalty on the numbers used by each rating. Index 0 is reserved for ids unseen in training and has a zero embedding that never trains, which copies the NumPy `predict` (average plus the known biases only). It is trained with Adam in batches of 1024 and stopped early on a validation pile (patience 5, best epoch restored).
+
+Settings were chosen on the validation pile (3 shuffles): 50 hidden numbers, regularization 0.15, learning rate 0.003 (validation RMSE 0.864). Regularization 0.1, the NumPy value, overfits under Adam (validation 0.870, best epoch 4, then worse while the training RMSE kept falling). Adam fits the training ratings much more thoroughly than the slow per-rating SGD, which probably acted like early stopping.
+
+Test pile, 10 shuffles, mean with lowest to highest:
+
+| Model | RMSE |
+|---|---|
+| NumPy matrix factorization (20 hidden numbers, strength 0.1, 55 epochs) | 0.856 (0.843 to 0.862) |
+| PyTorch matrix factorization (50 hidden numbers, strength 0.15, early stopping) | 0.857 (0.847 to 0.865) |
+
+The two agree to within 0.002 on average, with PyTorch lower in 1 of 10 shuffles, equal at three decimals in 2 and higher in 7. The PyTorch version trains on 70% of the ratings and the NumPy one on 80%, because early stopping needs a validation pile, which may account for the 0.002. This is a check of the training loop, not an improvement.
+
+### Step 2: neural collaborative filtering (`src/torch_ncf.py`, `src/torch_ncf_tune.py`, `src/torch_ncf_final.py`)
+
+The dot product is replaced by an MLP over the joined user and movie vectors (`2k -> 128 -> 64 -> 1`, ReLU, dropout). Average, biases, penalty and training loop are the same as in step 1, so the interaction term is the only change.
+
+Tuning on the validation pile (3 shuffles, 5 grids, validation RMSE):
+- Dropout 0.2, 0.4, 0.6, embedding regularization 0.15 to 1.0 and learning rate 0.001 or 0.003 all tied at 0.871 to 0.876, and the best epoch was 2 to 6 every time: the model overfits within a few epochs and none of these settings slows it.
+- Weight decay on all weights was the only setting that helped: 1e-5 gave 0.871 to 0.872, 1e-4 gave 0.870, 1e-3 gave 0.869, 3e-3 gave 0.868 (MLP 128, 64; 0.875 for MLP 64, 32) and 1e-2 broke the model (0.995). These runs used 20 hidden numbers per user and movie, which scored 0.001 better than 50 without weight decay (0.871 against 0.872).
+- Chosen: 20 hidden numbers, MLP (128, 64), dropout 0.2, regularization 0.15, weight decay 0.003, learning rate 0.003.
+
+| Model | RMSE on the test pile (10 shuffles) |
+|---|---|
+| Matrix factorization, PyTorch | 0.857 (0.847 to 0.865) |
+| Neural collaborative filtering | 0.865 (0.850 to 0.877) |
+
+The neural model is worse in 10 of 10 shuffles, by 0.008 on average (0.003 to 0.015). With weight decay the best epoch moved from 3 to 8 to 23, and the training RMSE at the best epoch is 0.794 against 0.865 on the test pile.
+
+### Step 3: two-tower model with a ranking loss (`src/torch_twotower.py`, `src/torch_twotower_tune.py`, `src/torch_twotower_final.py`)
+
+The hit rate test of Part E, scored with `prepare` and `hit_rate` from `src/library_hit_rate.py` (same pool, same masking of rated movies, same tie-breaking) and the same protocol as the library models: settings and the number of epochs chosen on the validation pile by hit rate, refit on the full training pile, scored once on the test pile.
+
+A user tower and a movie tower each map an id to a vector, and the score is their dot product plus a movie bias. It is trained like BPR: for every positive (a rated movie, or a movie rated 4.0 or more in the liked-only version) 5 random movies are drawn as negatives, redrawn every epoch, negatives the user rated are masked out, and the loss is `softplus(-(score of the positive - score of the negative))` plus a penalty on the size of the numbers used. Two kinds of tower: a plain embedding, and an embedding followed by one hidden layer (128, ReLU).
+
+Tuning on the validation pile (3 shuffles, hit rate, 64 hidden numbers):
+- Regularization 0.003 and 0.01 tied (0.559 and 0.556 rated at all, 0.597 and 0.589 liked only). 0.1 underfit (0.36 to 0.43) and 0 overfit after 15 to 40 epochs (0.492 and 0.514 at the peak, 0.424 and 0.483 at epoch 200).
+- Learning rate 0.003 beat 0.01 in all four comparisons at regularization 0.01 (5 negatives: 0.556 against 0.527 rated at all, 0.581 against 0.570 liked only; 1 negative: 0.524 against 0.474 and 0.553 against 0.516). 5 negatives per positive beat 1 by 0.03 to 0.05, and 10 tied with 5 (0.563 against 0.559 rated at all, 0.607 against 0.597 liked only) at twice the cost.
+- The plain towers were still improving near the 200-epoch cap (best epoch 190 with 5 negatives, 145 and 170 with 10). The MLP towers were much worse (0.470 and 0.464 at 5 negatives, 0.465 and 0.482 at 10).
+- Chosen: learning rate 0.003, regularization 0.003, 5 negatives, epochs picked per shuffle (up to 200).
+
+Hit rate at 10 on the test pile (10 shuffles, mean with lowest to highest):
+
+| Method | Hit rate at 10 | Recall at 10 | Median ratings of the picks |
+|---|---|---|---|
+| Most rated | 0.565 (0.549 to 0.587) | 0.118 (0.110 to 0.127) | 185 |
+| BPR (library), rated at all / liked only | 0.630 / 0.679 | 0.152 / 0.179 | 58 / 72 |
+| Item-item cosine (library), rated at all / liked only | 0.692 / 0.722 | 0.191 / 0.204 | 116 / 134 |
+| ALS (library), rated at all | 0.744 (0.708 to 0.768) | 0.227 (0.210 to 0.239) | 113 |
+| ALS (library), liked only | 0.758 (0.729 to 0.785) | 0.239 (0.226 to 0.258) | 106 |
+| Two-tower, embeddings, rated at all | 0.725 (0.703 to 0.744) | 0.210 (0.193 to 0.218) | 100 |
+| Two-tower, embeddings, liked only | 0.747 (0.727 to 0.776) | 0.231 (0.219 to 0.259) | 115 |
+| Two-tower, MLP towers, rated at all | 0.604 (0.563 to 0.632) | 0.139 (0.120 to 0.149) | 82 |
+| Two-tower, MLP towers, liked only | 0.623 (0.597 to 0.660) | 0.148 (0.136 to 0.168) | 81 |
+
+The most-rated list reproduces 0.565 (0.549 to 0.587) in the same run, which checks the scoring. The numbers for the library models are from "Extra: top 10 from library models trained on who rated what".
+
+What it shows:
+- Plain two-tower towers reach 0.725 (rated at all) and 0.747 (liked only), above the library BPR (+0.095 and +0.068) and item-item (+0.033 and +0.025), and below ALS (-0.019 and -0.011), with the ranges overlapping. The loss is the one BPR uses, so the difference from the library BPR comes from the setup (Adam, 5 negatives, up to 200 epochs, regularization 0.003) and not from a new idea. I did not isolate which part matters.
+- A nonlinear tower does not help. The MLP towers score 0.604 and 0.623, below the plain towers by 0.121 and 0.124, and they pick obscurer movies (median 81 to 82 ratings against 100 to 115).
+- Neither neural model beats its linear counterpart: the MLP over joined vectors loses to the dot product on rating error (0.865 against 0.857), and the MLP towers lose to plain towers on hit rate. This matches the report that a well-tuned dot product beats MLP-based collaborative filtering (Rendle et al., "Neural Collaborative Filtering vs. Matrix Factorization Revisited", 2020).
+
+Limits:
+- The tuning is not equal. The two-tower settings were chosen once, on the validation piles of shuffles 0 to 2, and then fixed for all 10 shuffles. ALS and BPR were chosen in each shuffle from their own grids. The validation piles hold 70% of the ratings and the final fits 80%, so the epoch counts transfer only roughly.
+- The two-tower grids are small (8, 3 and 4 settings in three rounds, with one hidden size for the MLP towers), and the chosen epoch for the plain towers was 190 or more in 3 of 10 shuffles (rated at all) and 2 of 10 (liked only), so more training may help. The weak MLP towers were tried with one setting of everything else. Overfitting is my reading of why they lose, and it was not tested (for example with dropout in the towers or a smaller hidden layer).
+- The towers use only ids. The place where a nonlinear tower is expected to pay off, item features such as genres and decade, was not tried.
+- The rating error comparison inherits the limits of Part C: random splits, shuffles that overlap, and 70% of the data for the PyTorch models against 80% for the NumPy one.
+- 100k only. Neural models were not run on the 32M ratings, where they would have more data to learn a nonlinear part from, and nothing was run on the GPU.
+- The same limits as the other hit rate results apply: the test rewards predicting which movies users go on to rate, the pool leaves out 32% of the hidden liked ratings, and the test piles overlap across shuffles.
+- The scoring code now has tests (`python -m pytest tests`): no leakage in the time-based cuts, and RMSE, hit rate, recall and tie-breaking against a hand-worked example.
+
 ## What failed, and what I would try next
 
 Written from the results above. Every number is from this document.
@@ -790,6 +867,7 @@ Written from the results above. Every number is from this document.
 7. **The biggest misses look unpredictable.** The worst 1% of ratings are mostly 0.5 or 1.0 stars on movies the user usually rates high (91% are 1.5 or lower, against 6% of all ratings), and they make up 12.1% of the squared error. Ratings alone do not tell a real dislike from a slip or an unusual use of the scale. This is a reading of the pattern, not a tested explanation.
 8. **The explanations are partial.** The content-based reason is true but weak for heavy users: all 15 examples scored 1.00, and the liked movie it names is the highest rated among ties, not proof it caused the pick. For matrix factorization, the breakdown of the prediction (average, generosity, movie pull, taste match) is exact, but the "closest liked movies" are a similarity view of the hidden numbers and not how the score is computed. For some users, such as user 1, the taste match is near zero, so the neighbours add little.
 9. **The content prior for new movies did not help.** Giving a movie with no ratings the average bias of similar movies (genres and decade) made the RMSE worse in 10 of 10 shuffles (1.034 and 1.040 against 1.026). On shuffle 0 the prior was +0.168 while those movies' ratings were 0.146 below the average, because the movies it learns from are the well-liked ones with many ratings. From 2 to 19 ratings it gains 0.001 to 0.005 and the overall RMSE is unchanged at 0.856.
+10. **Neural models did not beat the dot product.** An MLP over the joined user and movie vectors scores 0.865 RMSE against 0.857 for the same model with a dot product, worse in 10 of 10 shuffles, and two-tower models with MLP towers score a hit rate of 0.604 and 0.623 against 0.725 and 0.747 for plain embedding towers. The plain two-tower model gets close to ALS (0.744 and 0.758) but does not pass it. See "Extra: neural models in PyTorch".
 
 ### Where the evidence is weaker than it looks
 - The hit rate test rewards models that predict which movies a user goes on to rate. The library ALS wins on it (0.744 against 0.565 for the most-rated list), but that does not show the movies are better for the user. The library models were also tuned on the hit rate and my matrix factorization was not.
@@ -799,6 +877,7 @@ Written from the results above. Every number is from this document.
 - The cold-start users are simulated by removing ratings from existing users, and their runs train on about 19% less data.
 - The similarity test uses all ratings and not a held-out pile. Hidden-number similarity was not scored on it because the model learned from the same ratings.
 - Most scores come from `ml-latest-small` (100,836 ratings); the 32M run covers the baselines and the library models only (see "Extra: the 32M version"). Most scores come from random splits. The time-based split covers the rating error only (hit rate not rerun), with one split per cut, and most users rate everything in one short sitting.
+- The neural comparison is not tuned equally: the two-tower settings were chosen on three validation piles and fixed, ALS and BPR were chosen per shuffle, and the plain towers were still improving at the 200-epoch cap in some shuffles. Only ids were used in the towers, and only the 100k data.
 - One claim was corrected along the way: the hidden liked movies are not "mostly well known". Their median is 62 ratings, with 31% among the 100 most rated.
 
 ### What I would try next
@@ -806,3 +885,4 @@ Written from the results above. Every number is from this document.
 2. A content prior for new movies that is centred correctly (the first version was +0.17 stars too high for movies with no ratings), or content features that carry more than genre and decade.
 3. The hit rate and the hybrid on the time-based cuts, to see whether matrix factorization still loses the top 10 when the test is the future.
 4. The 32M version checked the ranking of the library models (it held), but not matrix factorization on ratings, the hybrid or the content-based list. A time-based cut at that size, where users have a real history, is the test that is still missing.
+5. Neural models with item features in the towers (genres, decade, tags), longer training of the plain two-tower model, and a neural model on the 32M ratings, where there is enough data for a nonlinear part to matter. The plain two-tower model is 0.011 to 0.019 below ALS, so a gap that small could close with tuning in either direction.
